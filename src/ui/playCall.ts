@@ -5,8 +5,7 @@ import type { PlayDef } from '../core/types';
  * ACTION MENU（Madden 风格）：底部居中三个大按钮，点开后在按钮上方浮出组内战术卡片。
  * 路线映射：球场 x∈[-13.35,13.35] → svgX[10,110]；z∈[-3,45] → svgY[62,8]（纵深向上）。
  */
-function routeSvg(play: PlayDef): string {
-  const svgX = (x: number) => 60 + x * 3.7;
+export function routeSvg(play: PlayDef): string {  const svgX = (x: number) => 60 + x * 3.7;
   const svgY = (z: number) => 62 - (z + 3) * 1.125;
 
   const pts = play.route.points.map((p) => `${svgX(p.x).toFixed(1)},${svgY(p.z).toFixed(1)}`).join(' ');
@@ -46,8 +45,8 @@ export interface PlayGroup {
 }
 
 export const PLAY_GROUPS: PlayGroup[] = [
-  { id: 'quick', title: 'QUICK PASS', icon: '⏱️', sub: '快速短传 · 平快球', playIds: ['slant', 'hitch', 'out'] },
-  { id: 'smart', title: 'SMART PASS', icon: '🎯', sub: '纵深打击 · 高球', playIds: ['go'] },
+  { id: 'quick', title: 'QUICK PASS', icon: '⏱️', sub: '快速短传 · 平快球', playIds: ['slant', 'hitch', 'out', 'curl', 'drag'] },
+  { id: 'smart', title: 'SMART PASS', icon: '🎯', sub: '纵深打击 · 高球', playIds: ['go', 'post', 'corner', 'comeback', 'fade'] },
   { id: 'react', title: 'READ & REACT', icon: '👀', sub: '随机应变', playIds: [] },
 ];
 

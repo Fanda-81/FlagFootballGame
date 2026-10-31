@@ -1,44 +1,25 @@
 import type { RouteDef, Vec2 } from '../core/types';
 
 /**
- * 路线树（Route Tree）——MVP 4 条核心路线
- * WR 起跑位于 x=+5（进攻方右侧外接手位），z=0 为开球线。
+ * 路线树（Route Tree）——腰旗橄榄球战术手册 13 条路线
+ * 传球路线 WR 起跑 x=+5（右侧外接手位）；跑阵路线 QB 起跑 (0,-3)。
  */
 export const ROUTES: RouteDef[] = [
-  {
-    id: 'slant',
-    name: 'Slant 斜插',
-    points: [
-      { x: 5, z: 0 },
-      { x: 5, z: 3 },
-      { x: 0, z: 8 },
-    ],
-  },
-  {
-    id: 'hitch',
-    name: 'Hitch 急停',
-    points: [
-      { x: 5, z: 0 },
-      { x: 5, z: 6 },
-    ],
-  },
-  {
-    id: 'out',
-    name: 'Out 外切',
-    points: [
-      { x: 5, z: 0 },
-      { x: 5, z: 8 },
-      { x: 12, z: 8 },
-    ],
-  },
-  {
-    id: 'go',
-    name: 'Go 直下',
-    points: [
-      { x: 5, z: 0 },
-      { x: 5, z: 40 },
-    ],
-  },
+  // ---- 传球路线（Pass，10）----
+  { id: 'slant', name: 'Slant 斜插', points: [{ x: 5, z: 0 }, { x: 5, z: 3 }, { x: 0, z: 8 }] },
+  { id: 'hitch', name: 'Hitch 急停', points: [{ x: 5, z: 0 }, { x: 5, z: 6 }] },
+  { id: 'out', name: 'Out 外切', points: [{ x: 5, z: 0 }, { x: 5, z: 8 }, { x: 12, z: 8 }] },
+  { id: 'go', name: 'Go 直下', points: [{ x: 5, z: 0 }, { x: 5, z: 40 }] },
+  { id: 'post', name: 'Post 内切深区', points: [{ x: 5, z: 0 }, { x: 5, z: 10 }, { x: 0, z: 20 }] },
+  { id: 'corner', name: 'Corner 角旗', points: [{ x: 5, z: 0 }, { x: 5, z: 10 }, { x: 12, z: 18 }] },
+  { id: 'curl', name: 'Curl 回身内钩', points: [{ x: 5, z: 0 }, { x: 5, z: 12 }, { x: 2.5, z: 14.5 }] },
+  { id: 'comeback', name: 'Comeback 回身外钩', points: [{ x: 5, z: 0 }, { x: 5, z: 14 }, { x: 9, z: 12 }] },
+  { id: 'drag', name: 'Drag 横穿', points: [{ x: 5, z: 0 }, { x: 5, z: 3 }, { x: -6, z: 6 }] },
+  { id: 'fade', name: 'Fade 纵深漂移', points: [{ x: 5, z: 0 }, { x: 9, z: 28 }] },
+  // ---- 跑阵路线（Run，3）----
+  { id: 'dive', name: 'Dive 中路直冲', points: [{ x: 0, z: -3 }, { x: 0, z: 6 }] },
+  { id: 'sweep', name: 'Sweep 外侧横扫', points: [{ x: 0, z: -3 }, { x: 9, z: 2 }, { x: 13, z: 9 }] },
+  { id: 'reverse', name: 'Reverse 反向跑', points: [{ x: 0, z: -3 }, { x: -9, z: 2 }, { x: -13, z: 9 }] },
 ];
 
 export function getRoute(id: string): RouteDef {

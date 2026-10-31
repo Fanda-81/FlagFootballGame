@@ -2,7 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { animateRig, buildScene, makePlayer, type PlayerRig } from './three/scene';
 import { loadHelmet, loadStadium } from './three/stadium';
-import { createCamera } from './three/camera';
+import { attachZoom, createCamera } from './three/camera';
 import { createRenderer } from './three/renderer';
 import { GameController, resultHeadline, resultSubline } from './core/stateMachine';
 import { GameState } from './core/types';
@@ -37,8 +37,9 @@ const btnGame = el('btn-game');
 
 // ---- 场景与渲染 ----
 const { scene, qb, wr, ball, stands } = buildScene();
-const camera = createCamera();
-const handle = createRenderer(canvas, scene, camera);
+const cameraRig = createCamera();
+const handle = createRenderer(canvas, scene, cameraRig.camera);
+attachZoom(canvas, cameraRig); // 滚轮 / 双指捏合缩放
 
 // ---- 外部模型：真实头盔 + 环形体育场（失败静默回退几何体） ----
 let helmetTemplate: THREE.Object3D | null = null;
@@ -258,4 +259,7 @@ window.addEventListener('resize', syncOrientation);
 
 // ---- 设置应用 + 侧边按钮 ----
 handle.setQuality(loadSettings().quality);
-bindSideButtons({ onQualityChange: (q) => handle.setQuality(q) });
+bindSideButtons({
+  onQualityChange: (q) => handle.setQuality(q),
+  onSelectPlay: (id) => controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined),
+});

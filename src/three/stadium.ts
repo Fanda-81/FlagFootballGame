@@ -22,17 +22,17 @@ function fitBox(obj: THREE.Object3D, targetWidth: number): THREE.Box3 {
 
 /**
  * 环形体育场：环绕球场一周（参考图效果）。
- * 模型自带观众席/看台；按包围盒缩放至环径约 90yd，底部贴地，中心对齐球场。
+ * 环径 115yd、下沉 1.5yd：保证看台不遮挡球场视野与摄像机路径。
  */
 export async function loadStadium(scene: THREE.Scene): Promise<THREE.Group | null> {
   try {
     const gltf = await loader.loadAsync('./models/stadium.glb');
     const obj = gltf.scene;
-    const box = fitBox(obj, 90); // 环径 90yd（球场纵深 60yd + 两侧余量）
+    const box = fitBox(obj, 115); // 环径 115yd（球场纵深 60yd + 看台 + 摄像机余量）
     const center = box.getCenter(new THREE.Vector3());
     obj.position.set(
       -center.x,
-      -box.min.y,
+      -box.min.y - 1.5, // 整体下沉：看台顶低于摄像机默认视线
       FIELD_LENGTH / 2 - center.z,
     );
     obj.traverse((n) => {

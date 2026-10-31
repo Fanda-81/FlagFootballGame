@@ -1,7 +1,9 @@
-import type { PlayerCard } from '../core/types';
+import type { PlayDef, PlayerCard } from '../core/types';
 import { randomWRCard } from '../data/cards';
 import { addCard, loadCards, loadSettings, resetAll, saveSettings } from '../data/storage';
+import { PLAYS } from '../data/plays';
 import { openModal } from './modals';
+import { routeSvg } from './playCall';
 
 const RARITY_LABEL: Record<string, string> = {
   common: '普通',
@@ -107,8 +109,38 @@ function openSettings(onQualityChange: (q: 'high' | 'low') => void): void {
   });
 }
 
+/** 战术手册弹窗：全部 13 战术（3 跑阵 + 10 传球），点卡片直接开球 */
+function openPlaybook(onSelectPlay: (id: string) => void): void {
+  const runPlays = PLAYS.filter((p) => p.kind === 'run');
+  const passPlays = PLAYS.filter((p) => p.kind === 'pass');
+  const cardHtml = (p: PlayDef) => `
+    <div class="play-card">
+      <div class="pc-top"><span class="pc-name">${p.name}</span><span class="pc-formation">${p.formation}</span></div>
+      <div class="pc-route">${routeSvg(p)}</div>
+      <div class="pc-hint">${p.hintText}</div>
+    </div>`;
+
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <h3 class="pb-title">🏃 跑阵（${runPlays.length}）</h3>
+    <div class="playbook-grid">${runPlays.map(cardHtml).join('')}</div>
+    <h3 class="pb-title">🏈 传球（${passPlays.length}）</h3>
+    <div class="playbook-grid">${passPlays.map(cardHtml).join('')}</div>`;
+  const modal = openModal(`战术手册（${PLAYS.length} 战术）`, body);
+
+  const all = [...runPlays, ...passPlays];
+  modal.el.querySelectorAll('.play-card').forEach((card, i) => {
+    card.addEventListener('click', () => {
+      modal.close();
+      onSelectPlay(all[i].id);
+    });
+  });
+}
+
 export interface SideButtonsOptions {
   onQualityChange: (q: 'high' | 'low') => void;
+  /** 战术本点选后开球 */
+  onSelectPlay: (playId: string) => void;
 }
 
 /** 绑定左右功能按钮 */
@@ -120,6 +152,7 @@ export function bindSideButtons(opts: SideButtonsOptions): void {
   };
   bind('btn-draw', openDraw);
   bind('btn-cards', openCards);
+  bind('btn-playbook', () => openPlaybook(opts.onSelectPlay));
   bind('btn-shop', openShop);
   bind('btn-settings', () => openSettings(opts.onQualityChange));
 }

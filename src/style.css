@@ -590,6 +590,27 @@ body {
   display: block;
 }
 
+/* ============ 战术手册弹窗 ============ */
+.pb-title {
+  margin: 12px 0 6px;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.pb-title:first-child {
+  margin-top: 0;
+}
+
+.playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.playbook-grid .play-card {
+  width: auto;
+}
+
 /* ============ 竖屏布局调整（防误操作，仍建议横屏） ============ */
 @media (orientation: portrait) {
   #app {

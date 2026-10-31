@@ -80,6 +80,8 @@ export interface PlayDef {
   name: string;
   /** 阵型名 */
   formation: string;
+  /** 分类：跑阵 / 传球 */
+  kind: 'run' | 'pass';
   route: RouteDef;
   /** 推荐的球型提示 */
   hint: ThrowType;
