@@ -500,6 +500,39 @@ body {
   display: none !important;
 }
 
+/* ============ 蓄力环（长按反馈） ============ */
+.charge-ring {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 50%;
+  border: 4px solid var(--accent-hot);
+  box-shadow: 0 0 18px rgba(255, 179, 0, 0.7);
+  animation: charge-pulse 0.5s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 4;
+}
+
+@keyframes charge-pulse {
+  from {
+    transform: scale(0.75);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+.pc-route svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* ============ 竖屏布局调整（防误操作，仍建议横屏） ============ */
 @media (orientation: portrait) {
   #app {
