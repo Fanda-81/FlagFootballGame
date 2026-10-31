@@ -1,5 +1,5 @@
 import { GameState } from './types';
-import type { PlayDef, PlayResult, ThrowType, QBAttrs, WRAttrs } from './types';
+import type { PlayDef, PlayResult, ThrowType, QBAttrs, WRAttrs, Vec2 } from './types';
 import { PlayDirector, THROW_WINDOW_AFTER_STOP } from '../gameplay/playDirector';
 import { DEFAULT_QB_CARD, DEFAULT_WR_CARD } from '../data/cards';
 import { getPlay } from '../data/plays';
@@ -39,14 +39,15 @@ export class GameController {
     this.qbAttrs = qbCard.attrs as QBAttrs;
   }
 
-  /** 选择战术并开球（PLAY_CALL / RESULT → ROUTE） */
-  selectPlay(playId: string): void {
+  /** 选择战术并开球（PLAY_CALL / RESULT → ROUTE）；比赛模式传 defenders */
+  selectPlay(playId: string, defenders?: Vec2[]): void {
     if (this.state !== GameState.PLAY_CALL && this.state !== GameState.RESULT) return;
     this.play = getPlay(playId);
     this.director = new PlayDirector({
       play: this.play,
       wrAttrs: this.wrAttrs,
       qbAttrs: this.qbAttrs,
+      defenders,
     });
     this.lastResult = null;
     this.ballProgress = 0;
@@ -122,6 +123,8 @@ export function resultHeadline(code: PlayResult['code'], dynamic: boolean): stri
   switch (code) {
     case 'complete':
       return dynamic ? '完美接球！' : '接球完成！';
+    case 'defensed':
+      return '被防守破坏！';
     case 'overthrow':
       return '传大了！';
     case 'underthrow':
@@ -137,6 +140,8 @@ export function resultSubline(code: PlayResult['code']): string {
   switch (code) {
     case 'complete':
       return '连击 +1';
+    case 'defensed':
+      return '防守球员蹲守落点——换条路线或提前出手';
     case 'overthrow':
       return 'WR 还没跑到——试试平快球或早点出手';
     case 'underthrow':

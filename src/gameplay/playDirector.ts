@@ -13,12 +13,17 @@ export const THROW_WINDOW_AFTER_STOP = 0.7;
 /** QB 精度噪声幅度（码），TAC=99 时为零（确定性） */
 const TAC_NOISE_YD = 1.5;
 
+/** 防守破坏半径：球落点距防守球员小于该值时，接球被破坏 */
+export const DEFEND_RADIUS = 2.0;
+
 export interface PlayContext {
   play: PlayDef;
   wrAttrs: WRAttrs;
   qbAttrs: QBAttrs;
   /** 可注入随机源（测试确定性）；缺省 Math.random */
   rng?: () => number;
+  /** 比赛模式：防守球员站位（练习模式缺省 = 无防守） */
+  defenders?: Vec2[];
 }
 
 /**
@@ -36,12 +41,14 @@ export class PlayDirector {
   t = 0;
   runner: RunnerState;
   private readonly rng: () => number;
+  private readonly defenders: Vec2[];
 
   constructor(ctx: PlayContext) {
     this.play = ctx.play;
     this.wrAttrs = ctx.wrAttrs;
     this.qbAttrs = ctx.qbAttrs;
     this.rng = ctx.rng ?? Math.random;
+    this.defenders = ctx.defenders ?? [];
     this.wrSpeed = wrSpeedFor(ctx.wrAttrs.SPD);
     this.runner = makeRunner(ctx.play.route, this.wrSpeed);
   }
@@ -98,9 +105,14 @@ export class PlayDirector {
     }
 
     const verdict = judgeCatch(landing, wr.pos, this.wrAttrs.CTH);
+    let code = verdict.code;
+    // 比赛模式：防守球员蹲守落点附近 → 接球被破坏
+    if (code === 'complete' && this.defenders.some((d) => Math.hypot(d.x - landing.x, d.z - landing.z) < DEFEND_RADIUS)) {
+      code = 'defensed';
+    }
     return {
       ...base,
-      code: verdict.code,
+      code,
       landing,
       wrPosAtCatch: { ...wr.pos },
       distance: verdict.distance,

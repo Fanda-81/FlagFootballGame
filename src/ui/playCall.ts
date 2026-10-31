@@ -2,7 +2,7 @@ import { PLAYS } from '../data/plays';
 import type { PlayDef } from '../core/types';
 
 /**
- * Madden 风格战术卡片横滚列表：每张卡片含路线 SVG 图 + 战术名 + 阵型 + 球型提示。
+ * ACTION MENU（Madden 风格）：底部居中三个大按钮，点开后在按钮上方浮出组内战术卡片。
  * 路线映射：球场 x∈[-13.35,13.35] → svgX[10,110]；z∈[-3,45] → svgY[62,8]（纵深向上）。
  */
 function routeSvg(play: PlayDef): string {
@@ -13,7 +13,6 @@ function routeSvg(play: PlayDef): string {
   const start = play.route.points[0];
   const end = play.route.points[play.route.points.length - 1];
 
-  // 箭头：最后一段方向
   const seg = play.route.points.length > 1 ? play.route.points[play.route.points.length - 2] : null;
   const dx = seg ? svgX(end.x) - svgX(seg.x) : 0;
   const dy = seg ? svgY(end.z) - svgY(seg.z) : -10;
@@ -37,41 +36,116 @@ function routeSvg(play: PlayDef): string {
     </svg>`;
 }
 
-export interface PlayCallHandle {
-  setSelected(id: string | null): void;
-  setEnabled(enabled: boolean): void;
+export interface PlayGroup {
+  id: string;
+  title: string;
+  icon: string;
+  sub: string;
+  /** 组内战术；空数组表示随机应变 */
+  playIds: string[];
 }
 
-export function renderPlayCall(
-  container: HTMLElement,
-  onSelect: (playId: string) => void,
-): PlayCallHandle {
+export const PLAY_GROUPS: PlayGroup[] = [
+  { id: 'quick', title: 'QUICK PASS', icon: '⏱️', sub: '快速短传 · 平快球', playIds: ['slant', 'hitch', 'out'] },
+  { id: 'smart', title: 'SMART PASS', icon: '🎯', sub: '纵深打击 · 高球', playIds: ['go'] },
+  { id: 'react', title: 'READ & REACT', icon: '👀', sub: '随机应变', playIds: [] },
+];
+
+export interface ActionMenuOptions {
+  onSelectPlay: (playId: string) => void;
+  /** READ & REACT：随机开球 */
+  onReact: () => void;
+}
+
+export interface ActionMenuHandle {
+  setSelected(id: string | null): void;
+  setEnabled(enabled: boolean): void;
+  /** 关闭战术卡片浮层 */
+  closeCards(): void;
+}
+
+export function renderActionMenu(container: HTMLElement, opts: ActionMenuOptions): ActionMenuHandle {
   container.innerHTML = '';
-  const cards = PLAYS.map((play) => {
-    const card = document.createElement('div');
-    card.className = 'play-card';
-    card.innerHTML = `
-      <div class="pc-top">
-        <span class="pc-name">${play.name}</span>
-        <span class="pc-formation">${play.formation}</span>
-      </div>
-      <div class="pc-route">${routeSvg(play)}</div>
-      <div class="pc-hint">${play.hintText}</div>
-    `;
-    card.addEventListener('click', () => onSelect(play.id));
-    container.appendChild(card);
-    return { card, play };
+
+  // 三按钮面板
+  const menu = document.createElement('div');
+  menu.id = 'action-menu';
+
+  // 卡片浮层（按钮上方）
+  const pop = document.createElement('div');
+  pop.id = 'playcard-pop';
+  pop.className = 'hidden';
+  container.appendChild(pop);
+
+
+
+  const renderCards = (group: PlayGroup) => {
+
+    pop.innerHTML = '';
+    for (const playId of group.playIds) {
+      const play = PLAYS.find((p) => p.id === playId)!;
+      const card = document.createElement('div');
+      card.className = 'play-card';
+      card.innerHTML = `
+        <div class="pc-top">
+          <span class="pc-name">${play.name}</span>
+          <span class="pc-formation">${play.formation}</span>
+        </div>
+        <div class="pc-route">${routeSvg(play)}</div>
+        <div class="pc-hint">${play.hintText}</div>`;
+      card.addEventListener('click', () => {
+        pop.classList.add('hidden');
+        opts.onSelectPlay(play.id);
+      });
+      pop.appendChild(card);
+    }
+    pop.classList.remove('hidden');
+  };
+
+  for (const group of PLAY_GROUPS) {
+    const btn = document.createElement('button');
+    btn.className = 'action-btn';
+    btn.innerHTML = `
+      <span class="ab-icon">${group.icon}</span>
+      <span class="ab-title">${group.title}</span>
+      <span class="ab-sub">${group.sub}</span>`;
+    btn.addEventListener('click', () => {
+      if (group.playIds.length > 0) {
+        renderCards(group);
+      } else {
+        pop.classList.add('hidden');
+
+        opts.onReact();
+      }
+    });
+    menu.appendChild(btn);
+  }
+  container.appendChild(menu);
+
+  // 点空白处关闭浮层
+  container.addEventListener('click', (e) => {
+    if (e.target === container || e.target === menu) {
+      pop.classList.add('hidden');
+
+    }
   });
 
   return {
     setSelected(id) {
-      for (const { card, play } of cards) {
-        card.classList.toggle('selected', play.id === id);
+      // 战术卡片选中态由浮层卡片承担；此处同步卡片高亮
+      for (const card of Array.from(pop.querySelectorAll<HTMLElement>('.play-card'))) {
+        const nameEl = card.querySelector('.pc-name');
+        const play = PLAYS.find((p) => p.name === nameEl?.textContent);
+        card.classList.toggle('selected', play?.id === id);
       }
     },
     setEnabled(enabled) {
-      container.style.opacity = enabled ? '1' : '0.45';
-      container.style.pointerEvents = enabled ? 'auto' : 'none';
+      menu.style.opacity = enabled ? '1' : '0.45';
+      menu.style.pointerEvents = enabled ? 'auto' : 'none';
+    },
+    closeCards() {
+      pop.classList.add('hidden');
+
     },
   };
 }

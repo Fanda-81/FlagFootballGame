@@ -215,14 +215,71 @@ body {
   border-top: 1px solid var(--panel-border);
   padding: 10px 12px;
   z-index: 5;
+  position: relative;
 }
 
-#playcall-list {
+/* ACTION MENU：底部居中三按钮 */
+#action-menu {
   display: flex;
+  justify-content: center;
   gap: 12px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.action-btn {
+  flex: 1;
+  max-width: 190px;
+  height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid rgba(200, 215, 240, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(22, 35, 63, 0.92), rgba(14, 23, 48, 0.92));
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.12s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+  border-color: var(--accent-hot);
+}
+
+.action-btn .ab-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.action-btn .ab-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.action-btn .ab-sub {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* 战术卡片浮层：ACTION MENU 上方 */
+#playcard-pop {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(10, 16, 30, 0.95);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  z-index: 6;
+  max-width: 96vw;
   overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
 }
 
 .play-card {

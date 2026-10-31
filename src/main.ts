@@ -1,17 +1,18 @@
 import './style.css';
-import { buildScene } from './three/scene';
+import { animateRig, buildScene, makePlayer, type PlayerRig } from './three/scene';
 import { createCamera } from './three/camera';
 import { createRenderer } from './three/renderer';
 import { GameController, resultHeadline, resultSubline } from './core/stateMachine';
 import { GameState } from './core/types';
-import type { WRAttrs } from './core/types';
+import type { Vec2, WRAttrs } from './core/types';
 import { QB_POS } from './gameplay/playDirector';
 import { computeThrow } from './gameplay/ballPhysics';
 import { routeLength } from './gameplay/routes';
 import { wrSpeedFor } from './gameplay/routeRunner';
 import { DEFAULT_WR_CARD } from './data/cards';
+import { PLAYS } from './data/plays';
 import { attachGesture } from './ui/gestures';
-import { renderPlayCall } from './ui/playCall';
+import { renderActionMenu } from './ui/playCall';
 import { bindSideButtons } from './ui/sideButtons';
 import { loadSettings } from './data/storage';
 
@@ -30,11 +31,44 @@ const resultBanner = el('result-banner');
 const rotateHint = el('rotate-hint');
 const playcallList = el('playcall-list');
 const stage = el('stage');
+const btnGame = el('btn-game');
 
 // ---- 场景与渲染 ----
 const { scene, qb, wr, ball } = buildScene();
 const camera = createCamera();
 const handle = createRenderer(canvas, scene, camera);
+
+// ---- 模式：主页练习（单球员接球） / 模拟比赛（QB+WR+防守） ----
+type Mode = 'practice' | 'game';
+let mode: Mode = 'practice';
+const defenders: PlayerRig[] = [];
+const DEFENDER_COUNT = 4;
+
+function applyMode(): void {
+  // 主页练习模式：场上只有一个接球球员（WR），QB 隐藏
+  qb.group.visible = mode === 'game';
+  btnGame.querySelector('span')!.textContent = mode === 'game' ? '训练' : '比赛';
+}
+
+/** 比赛模式：防守球员随机站位并上场，返回站位（供判定用） */
+function spawnDefenders(): Vec2[] {
+  for (const d of defenders) scene.remove(d.group);
+  defenders.length = 0;
+  const positions: Vec2[] = [];
+  for (let i = 0; i < DEFENDER_COUNT; i++) {
+    const rig = makePlayer(0x8f1a1a, 0x7a4b2c);
+    const x = Math.round((Math.random() * 22 - 11) * 10) / 10; // -11 ~ 11
+    const z = Math.round((3 + Math.random() * 17) * 10) / 10; // 3 ~ 20
+    rig.group.position.set(x, 0, z);
+    rig.group.rotation.y = Math.PI; // 面向 QB
+    scene.add(rig.group);
+    defenders.push(rig);
+    positions.push({ x, z });
+  }
+  return positions;
+}
+
+applyMode();
 
 // ---- 蓄力环 ----
 const chargeRing = document.createElement('div');
@@ -63,6 +97,7 @@ const controller = new GameController({
     playCall.setEnabled(idle);
     throwHint.classList.toggle('hidden', state !== GameState.ROUTE);
     if (state !== GameState.ROUTE) chargeRing.classList.add('hidden');
+    if (idle) playCall.closeCards();
   },
   onSnap: (play) => {
     playCall.setSelected(play.id);
@@ -79,9 +114,30 @@ const controller = new GameController({
   },
 });
 
-const playCall = renderPlayCall(playcallList, (id) => controller.selectPlay(id));
+const playCall = renderActionMenu(playcallList, {
+  onSelectPlay: (id) => {
+    controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined);
+  },
+  onReact: () => {
+    const pick = PLAYS[Math.floor(Math.random() * PLAYS.length)];
+    controller.selectPlay(pick.id, mode === 'game' ? spawnDefenders() : undefined);
+  },
+});
 playCall.setEnabled(true);
 updateHud();
+
+// ---- 模拟比赛按钮 ----
+btnGame.addEventListener('click', () => {
+  mode = mode === 'game' ? 'practice' : 'game';
+  applyMode();
+  if (mode === 'game') {
+    spawnDefenders();
+  } else {
+    for (const d of defenders) scene.remove(d.group);
+    defenders.length = 0;
+  }
+  resultBanner.classList.add('hidden');
+});
 
 // ---- 手势：轻点 = 高球 lob，长按 = 平快球 bullet ----
 attachGesture(canvas, {
@@ -100,25 +156,45 @@ attachGesture(canvas, {
 });
 
 // ---- 渲染循环：状态机驱动 + 画面同步 ----
+let runPhase = 0;
+let idlePhase = 0;
+
 handle.onFrame = (dt) => {
   controller.update(dt);
   const d = controller.director;
 
   if (d) {
-    // WR：位置 + 朝向（沿速度方向）
-    wr.position.set(d.runner.pos.x, 0, d.runner.pos.z);
+    // WR：位置 + 朝向 + 跑动动画
+    wr.group.position.set(d.runner.pos.x, 0, d.runner.pos.z);
     if (!d.runner.done) {
-      wr.rotation.y = Math.atan2(d.runner.vel.x, d.runner.vel.z);
+      wr.group.rotation.y = Math.atan2(d.runner.vel.x, d.runner.vel.z);
+      runPhase += dt * 10;
+      animateRig(wr, runPhase, true);
+    } else {
+      idlePhase += dt;
+      animateRig(wr, idlePhase * 2, false);
     }
+  } else {
+    idlePhase += dt;
+    animateRig(wr, idlePhase * 2, false);
   }
+
+  // QB / 防守球员待机摆动
+  idlePhase += dt * 0.5;
+  animateRig(qb, idlePhase, false);
+  for (let i = 0; i < defenders.length; i++) animateRig(defenders[i], idlePhase + i, false);
 
   switch (controller.state) {
     case GameState.PLAY_CALL:
     case GameState.SNAP:
     case GameState.ROUTE: {
-      // QB 持球待机（微呼吸）
       const t = performance.now() / 1000;
-      ball.position.set(qb.position.x, 1.35 + Math.sin(t * 2) * 0.03, qb.position.z + 0.3);
+      if (mode === 'game') {
+        ball.position.set(qb.group.position.x, 1.35 + Math.sin(t * 2) * 0.03, qb.group.position.z + 0.3);
+      } else {
+        // 练习模式：球在底线 QB 虚拟手中
+        ball.position.set(QB_POS.x, 1.35 + Math.sin(t * 2) * 0.03, QB_POS.z + 0.3);
+      }
       break;
     }
     case GameState.USER_THROW:
