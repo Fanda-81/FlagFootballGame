@@ -6,6 +6,8 @@ export interface RendererHandle {
   onFrame: ((dt: number, t: number) => void) | null;
   start(): void;
   resize(): void;
+  /** 画质：high = 设备像素比（≤2），low = 1x */
+  setQuality(q: 'high' | 'low'): void;
 }
 
 export function createRenderer(
@@ -32,6 +34,10 @@ export function createRenderer(
     renderer,
     onFrame: null,
     resize,
+    setQuality(q) {
+      renderer.setPixelRatio(q === 'high' ? Math.min(window.devicePixelRatio, 2) : 1);
+      resize();
+    },
     start() {
       let last = performance.now();
       const loop = (now: number) => {

@@ -12,6 +12,8 @@ import { wrSpeedFor } from './gameplay/routeRunner';
 import { DEFAULT_WR_CARD } from './data/cards';
 import { attachGesture } from './ui/gestures';
 import { renderPlayCall } from './ui/playCall';
+import { bindSideButtons } from './ui/sideButtons';
+import { loadSettings } from './data/storage';
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -153,3 +155,7 @@ function syncOrientation(): void {
 syncOrientation();
 window.addEventListener('orientationchange', syncOrientation);
 window.addEventListener('resize', syncOrientation);
+
+// ---- 设置应用 + 侧边按钮 ----
+handle.setQuality(loadSettings().quality);
+bindSideButtons({ onQualityChange: (q) => handle.setQuality(q) });
