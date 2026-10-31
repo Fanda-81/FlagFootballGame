@@ -65,6 +65,16 @@ src/
 
 游戏逻辑（`gameplay/`、`core/`）与渲染彻底分离，全部可单元测试；渲染层仅做画面同步。
 
+## 3D 美术资产
+
+- **环形体育场** `public/models/stadium.glb`：Poly Pizza（Poly by Google，CC0）低多边形体育场，环绕球场一周，加载后自动隐藏几何看台；加载失败回退内置几何看台+人群
+- **橄榄球头盔** `public/models/helmet.glb`：Poly Pizza（CC0），替换球员几何头；加载失败回退几何头盔
+- 所有外部模型按包围盒自动缩放对齐，**不需要手动调比例**
+
+### 想要更真实的球员？自备模型（Mixamo 路线）
+
+免费的真实感骨骼动画球员可从 [Mixamo](https://www.mixamo.com)（Adobe 账号）下载 FBX 动画角色（如「American Football Player」风格 + 跑步动画），用 [Blender](https://www.blender.org) 或在线工具转成 `.glb`，放入 `public/models/`，然后在 `src/main.ts` 的 `loadHelmet` 附近参照 `loadHelmet`/`applyHelmet` 写一段 loader 替换球员即可——挂点与动画管线已就绪。注意：手机浏览器内存有限，建议单模型 ≤2MB、骨骼 ≤40。
+
 ## 路线图
 
 - [ ] **识图战术分类**：上传战术板照片 → 识别路线（预留：路线数据即 `RouteDef` 折线，接入 OCR/图像模型即可生成）

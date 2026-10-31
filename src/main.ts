@@ -1,5 +1,7 @@
 import './style.css';
+import * as THREE from 'three';
 import { animateRig, buildScene, makePlayer, type PlayerRig } from './three/scene';
+import { loadHelmet, loadStadium } from './three/stadium';
 import { createCamera } from './three/camera';
 import { createRenderer } from './three/renderer';
 import { GameController, resultHeadline, resultSubline } from './core/stateMachine';
@@ -34,9 +36,30 @@ const stage = el('stage');
 const btnGame = el('btn-game');
 
 // ---- 场景与渲染 ----
-const { scene, qb, wr, ball } = buildScene();
+const { scene, qb, wr, ball, stands } = buildScene();
 const camera = createCamera();
 const handle = createRenderer(canvas, scene, camera);
+
+// ---- 外部模型：真实头盔 + 环形体育场（失败静默回退几何体） ----
+let helmetTemplate: THREE.Object3D | null = null;
+
+/** 用真实头盔模型替换球员几何头 */
+function applyHelmet(rig: PlayerRig): void {
+  if (!helmetTemplate) return;
+  for (const child of Array.from(rig.headAnchor.children)) rig.headAnchor.remove(child);
+  const clone = helmetTemplate.clone(true);
+  clone.position.set(0, 0, 0);
+  rig.headAnchor.add(clone);
+}
+
+void loadHelmet().then((template) => {
+  if (!template) return;
+  helmetTemplate = template;
+  for (const rig of [qb, wr, ...defenders]) applyHelmet(rig);
+});
+void loadStadium(scene).then((stadium) => {
+  if (stadium) stands.visible = false; // 模型自带看台，隐藏几何人群
+});
 
 // ---- 模式：主页练习（单球员接球） / 模拟比赛（QB+WR+防守） ----
 type Mode = 'practice' | 'game';
@@ -57,6 +80,7 @@ function spawnDefenders(): Vec2[] {
   const positions: Vec2[] = [];
   for (let i = 0; i < DEFENDER_COUNT; i++) {
     const rig = makePlayer(0x8f1a1a, 0x7a4b2c);
+    applyHelmet(rig);
     const x = Math.round((Math.random() * 22 - 11) * 10) / 10; // -11 ~ 11
     const z = Math.round((3 + Math.random() * 17) * 10) / 10; // 3 ~ 20
     rig.group.position.set(x, 0, z);

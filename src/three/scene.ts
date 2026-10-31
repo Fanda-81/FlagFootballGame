@@ -12,6 +12,8 @@ export interface PlayerRig {
   armR: THREE.Group;
   legL: THREE.Group;
   legR: THREE.Group;
+  /** 头部挂点：几何头/真实头盔模型都挂这里 */
+  headAnchor: THREE.Group;
 }
 
 export interface FieldObjects {
@@ -19,6 +21,8 @@ export interface FieldObjects {
   qb: PlayerRig;
   wr: PlayerRig;
   ball: THREE.Mesh;
+  /** 几何体看台人群（stadium 模型加载成功后隐藏） */
+  stands: THREE.Group;
 }
 
 /**
@@ -90,14 +94,16 @@ export function makePlayer(jerseyColor: number, skinColor: number): PlayerRig {
   torso.position.y = 1.36;
   group.add(torso);
 
-  // 头盔 + 面罩
+  // 头部挂点：几何头盔 + 面罩（可被真实模型替换）
+  const headAnchor = new THREE.Group();
+  headAnchor.position.y = 2.06;
+  group.add(headAnchor);
   const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), jersey);
-  helmet.position.y = 2.06;
   helmet.scale.set(1, 0.85, 1.05);
-  group.add(helmet);
+  headAnchor.add(helmet);
   const face = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.18), skin);
-  face.position.set(0, 1.99, 0.26);
-  group.add(face);
+  face.position.set(0, -0.07, 0.26);
+  headAnchor.add(face);
 
   // 四肢：以肩/髋为轴的摆动组
   const limb = (cx: number, y: number, len: number, rad: number) => {
@@ -131,7 +137,59 @@ export function makePlayer(jerseyColor: number, skinColor: number): PlayerRig {
   shadow.position.y = 0.02;
   group.add(shadow);
 
-  return { group, armL, armR, legL, legR };
+  return { group, armL, armR, legL, legR, headAnchor };
+}
+
+/** 几何看台 + 彩色人群（InstancedMesh，单 draw call）：U 形环绕球场 */
+function buildStands(): THREE.Group {
+  const g = new THREE.Group();
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x39424f, roughness: 0.9 });
+  const stepBox = new THREE.BoxGeometry(9, 1.1, 2.1);
+
+  // 两侧阶梯看台 + 远端看台
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 7; i++) {
+      const step = new THREE.Mesh(stepBox, standMat);
+      step.position.set(side * (16 + i * 1.6), 0.55 + i * 1.1, 18 + i * 4);
+      g.add(step);
+    }
+  }
+  for (let i = 0; i < 7; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(52, 1.1, 2.1), standMat);
+    step.position.set(0, 0.55 + i * 1.1, 52 + i * 1.6);
+    g.add(step);
+  }
+
+  // 人群：彩色小柱随机撒在看台面上
+  const CROWD = 900;
+  const crowdGeo = new THREE.BoxGeometry(0.55, 0.9, 0.55);
+  const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+  const crowd = new THREE.InstancedMesh(crowdGeo, crowdMat, CROWD);
+  const m = new THREE.Matrix4();
+  const colors = [0xd64545, 0x4a7fd4, 0xe8d44a, 0x63c46a, 0xe88a3a, 0xb06ad4, 0x56c4c4, 0xf0f0f0];
+  const tmpColor = new THREE.Color();
+  for (let i = 0; i < CROWD; i++) {
+    const side = Math.random() < 0.3 ? 0 : Math.random() < 0.5 ? -1 : 1;
+    const row = Math.floor(Math.random() * 7);
+    let x: number;
+    let z: number;
+    if (side === 0) {
+      x = (Math.random() - 0.5) * 46;
+      z = 52.5 + row * 1.6 + (Math.random() - 0.5) * 1.6;
+    } else {
+      x = side * (16 + row * 1.6 + (Math.random() - 0.5) * 1.2);
+      z = 14 + Math.random() * 40;
+    }
+    const y = 1.1 + row * 1.1 + 0.45;
+    m.setPosition(x, y, z);
+    crowd.setMatrixAt(i, m);
+    tmpColor.setHex(colors[Math.floor(Math.random() * colors.length)]);
+    crowd.setColorAt(i, tmpColor);
+  }
+  crowd.instanceMatrix.needsUpdate = true;
+  if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+  g.add(crowd);
+  return g;
 }
 
 /** 跑动摆臂摆腿动画：phase 0..2π；running=false 时轻微待机摆动 */
@@ -195,5 +253,9 @@ export function buildScene(): FieldObjects {
   ball.position.set(0, 1.4, -2.4); // QB 手中
   scene.add(ball);
 
-  return { scene, qb, wr, ball };
+  // 几何看台人群（stadium 模型加载成功后隐藏）
+  const stands = buildStands();
+  scene.add(stands);
+
+  return { scene, qb, wr, ball, stands };
 }
