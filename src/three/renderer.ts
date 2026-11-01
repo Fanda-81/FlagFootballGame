@@ -29,7 +29,7 @@ export function createRenderer(
   renderer.shadowMap.type = THREE.PCFShadowMap;
   // 更接近真实转播的色调映射
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.2;
 
   let quality: 'high' | 'low' = 'high';
 

@@ -1,7 +1,7 @@
 {
   "name": "flag-football-pass",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "腰旗橄榄球传球训练 MVP — Madden 风格战术 + 纵向 3D 球场",
   "type": "module",
   "engines": {

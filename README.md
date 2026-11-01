@@ -1,4 +1,4 @@
-# Flag Football Pass — 腰旗橄榄球传球训练 🏈
+# FFSIMU — 腰旗橄榄球传球训练 🏈
 
 Madden 风格的腰旗橄榄球传球训练网页游戏（PWA）：选战术 → 3D 球场 → 传球 → 接球判定。
 手机浏览器即开即玩，可「添加到主屏幕」当 App 用；电脑上用鼠标滚轮缩放，手机上双指捏合缩放。
@@ -187,7 +187,8 @@ blender -b joe04.blend -P tools/blender/export_player.py -- player.glb 25000 102
 |---|---|---|
 | 头盔 | `public/models/helmet.glb` | 已接入，自动缩放到头围 0.62yd、按球队主色给外壳调色 |
 | 全身球员 | `public/models/player.glb` | 把 `src/config.ts` 的 `PLAYER_MODEL_URL` 改成 `'./models/player.glb'`，自动归一到 1.92yd 身高、脚底贴地、正面朝 +z |
-| **QB 真实模型** | `public/models/qb.glb` | 默认加载（2.5 万面 / 1.5 MB），自带跑步动画；换模型改 `src/config.ts` 的 `QB_MODEL_URL`，或用 `?qb=./models/xxx.glb` 临时覆盖 |
+| **QB / WR 动态模型** | `public/models/qb.glb` | 默认加载（2.5 万面 / 1.5 MB）；QB 与 WR 共用，WR 用浅色球衣区分 |
+| **动作库** | `public/models/anims.glb` | 只含骨架的 4 段 Mixamo 动作：`Idle`（待机）/ `Run`（跑步）/ `Catch`（接球）/ `Pass`（传球），按骨名绑定到模型上 |
 | 替代头盔 | 任意 | URL 参数临时覆盖：`?player=./models/p1.glb&helmet=./models/h2.glb` |
 
 想单独看一个 `.glb` 长什么样（不启动游戏），用仓库里的预览页：

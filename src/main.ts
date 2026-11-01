@@ -2,12 +2,12 @@ import './style.css';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { animateRig, buildScene, makePlayer, type PlayerRig } from './three/scene';
-import { loadHelmet, loadPlayerModel } from './three/stadium';
+import { loadAnimationClips, loadHelmet, loadPlayerModel } from './three/stadium';
 import { attachZoom, createCamera } from './three/camera';
 import { createRenderer } from './three/renderer';
-import { GameController, resultHeadline, resultSubline } from './core/stateMachine';
+import { GameController } from './core/stateMachine';
 import { GameState } from './core/types';
-import type { Vec2, WRAttrs } from './core/types';
+import type { PlayResult, PlayResultCode, ThrowType, Vec2, WRAttrs } from './core/types';
 import { QB_POS } from './gameplay/playDirector';
 import { computeThrow } from './gameplay/ballPhysics';
 import { routeLength } from './gameplay/routes';
@@ -16,9 +16,9 @@ import { DEFAULT_WR_CARD } from './data/cards';
 import { PLAYS } from './data/plays';
 import { attachGesture } from './ui/gestures';
 import { renderActionMenu } from './ui/playCall';
-import { bindSideButtons } from './ui/sideButtons';
+import { bindSideButtons, openChangelog } from './ui/sideButtons';
 import { loadSettings, saveSettings } from './data/storage';
-import { HELMET_MODEL_URL, PLAYER_MODEL_URL, QB_MODEL_URL } from './config';
+import { ANIMS_URL, HELMET_MODEL_URL, PLAYER_MODEL_URL, QB_MODEL_URL } from './config';
 import type { PlayerModelAsset } from './three/stadium';
 import { initPWA } from './pwa';
 import {
@@ -59,6 +59,7 @@ function main(): void {
   const updateToast = el('update-toast');
   const netBadge = el('net-badge');
   const installBtn = el<HTMLButtonElement>('btn-install');
+  const commentFeed = el('comment-feed');
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- 场景与渲染 ----
@@ -102,49 +103,146 @@ function main(): void {
     rig.headAnchor.add(clone);
   }
 
-  /** 用真实球员模型替换几何身体，并播放模型自带的动画 */
-  const playerMixers: Array<{ mixer: THREE.AnimationMixer; rig: PlayerRig }> = [];
+  // ---- 模型 & 动画 ----
+  interface RigAnim {
+    mixer: THREE.AnimationMixer;
+    actions: Record<string, THREE.AnimationAction>;
+    current: string;
+  }
+  const rigAnims = new Map<PlayerRig, RigAnim>();
+  let animClips: THREE.AnimationClip[] = [];
+  let handBall: THREE.Mesh | null = null;
 
-  function applyModel(rig: PlayerRig, asset: PlayerModelAsset): void {
+  const clipsReady = loadAnimationClips(ANIMS_URL).then((clips) => {
+    animClips = clips;
+    return clips;
+  });
+
+  function actionKey(rig: PlayerRig, key: string): string | null {
+    const a = rigAnims.get(rig);
+    if (!a) return null;
+    const k = Object.keys(a.actions).find((n) => n.toLowerCase().includes(key.toLowerCase()));
+    return k ?? null;
+  }
+
+  function playClip(
+    rig: PlayerRig,
+    key: string,
+    opts: { once?: boolean; fade?: number; time?: number; timeScale?: number; paused?: boolean } = {},
+  ): THREE.AnimationAction | null {
+    const a = rigAnims.get(rig);
+    const k = actionKey(rig, key);
+    if (!a || !k) return null;
+    if (a.current === k && opts.time === undefined && !opts.once && !opts.paused) return a.actions[k];
+    const action = a.actions[k];
+    const prev = a.current && a.actions[a.current] !== action ? a.actions[a.current] : null;
+    action.reset();
+    action.setLoop(opts.once ? THREE.LoopOnce : THREE.LoopRepeat, opts.once ? 1 : Infinity);
+    action.clampWhenFinished = !!opts.once;
+    action.timeScale = opts.timeScale ?? 1;
+    if (opts.time !== undefined) action.time = opts.time;
+    action.paused = !!opts.paused;
+    action.fadeIn(opts.fade ?? 0.18).play();
+    if (prev) prev.fadeOut(opts.fade ?? 0.18);
+    a.current = k;
+    if (opts.paused) a.mixer.update(0);
+    return action;
+  }
+
+  function applyModel(rig: PlayerRig, asset: PlayerModelAsset, tint?: number): void {
     rig.body.visible = false;
     rig.modelHolder.clear();
     const clone = cloneSkeleton(asset.scene);
-    rig.modelHolder.add(clone);
-    if (asset.animations.length) {
-      const mixer = new THREE.AnimationMixer(clone);
-      const action = mixer.clipAction(asset.animations[0]);
-      action.setLoop(THREE.LoopRepeat, Infinity);
-      action.play();
-      playerMixers.push({ mixer, rig });
+    if (tint !== undefined) {
+      clone.traverse((n) => {
+        const mesh = n as THREE.Mesh;
+        if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+        const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+        mat.color.setHex(tint);
+        mesh.material = mat;
+      });
     }
+    rig.modelHolder.add(clone);
+
+    const mixer = new THREE.AnimationMixer(clone);
+    const actions: Record<string, THREE.AnimationAction> = {};
+    for (const clip of animClips.length ? animClips : asset.animations) {
+      actions[clip.name] = mixer.clipAction(clip);
+    }
+    rigAnims.set(rig, { mixer, actions, current: '' });
+    if (rig === qb) {
+      // 四分卫：停在传球动作的第 4 秒（蓄力姿势），出手后才继续
+      playClip(rig, 'Pass', { time: 4.05, paused: true, fade: 0.2 });
+      attachHandBall(clone);
+    } else {
+      playClip(rig, 'Idle');
+    }
+  }
+
+  /** 小橄榄球绑到右手骨骼；用世界缩放换算尺寸，避免被骨骼缩放放大/缩小 */
+  function attachHandBall(clone: THREE.Object3D): void {
+    let bone: THREE.Object3D | undefined =
+      clone.getObjectByName('mixamorig:RightHand') ?? clone.getObjectByName('mixamorigRightHand');
+    if (!bone) {
+      // GLTFLoader 会清洗骨骼名（去掉冒号），这里按名字后缀兜底查找
+      clone.traverse((n) => {
+        if (bone) return;
+        const name = n.name.toLowerCase().replace(/[^a-z]/g, '');
+        if (name.endsWith('righthand')) bone = n;
+      });
+    }
+    if (!bone) {
+      console.warn('[ball] 未找到右手骨骼');
+      return;
+    }
+    const geo = new THREE.SphereGeometry(0.1, 14, 10);
+    geo.scale(1, 0.78, 1.6);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x7a3f16, roughness: 0.55 }));
+    bone.updateWorldMatrix(true, false);
+    const s = new THREE.Vector3();
+    bone.getWorldScale(s);
+    const k = 1 / (s.x || 1);
+    mesh.scale.setScalar(k);
+    mesh.position.set(0, 0.05 * k, 0);
+    mesh.castShadow = true;
+    bone.add(mesh);
+    handBall = mesh;
   }
 
   /** 用全身球员模型替换几何身体 */
   function applyPlayerModel(rig: PlayerRig): void {
     if (!playerTemplate) return;
     if (rig === qb && qbTemplate) return;
-    applyModel(rig, playerTemplate);
+    applyModel(rig, playerTemplate, rig === wr ? 0xcfe0ff : undefined);
   }
 
-  void loadHelmet(HELMET_MODEL_URL).then((template) => {
-    if (!template) return;
-    helmetTemplate = template;
-    for (const rig of [qb, wr, ...defenders]) applyHelmet(rig);
+  void clipsReady.then(() => {
+    void loadHelmet(HELMET_MODEL_URL).then((template) => {
+      if (!template) return;
+      helmetTemplate = template;
+      for (const rig of [qb, wr, ...defenders]) applyHelmet(rig);
+    });
+    if (PLAYER_MODEL_URL) {
+      void loadPlayerModel(PLAYER_MODEL_URL).then((template) => {
+        if (!template) return;
+        playerTemplate = template;
+        for (const rig of [qb, wr, ...defenders]) applyPlayerModel(rig);
+      });
+    }
+    if (QB_MODEL_URL) {
+      void loadPlayerModel(QB_MODEL_URL).then((template) => {
+        if (!template) return;
+        qbTemplate = template;
+        applyModel(qb, qbTemplate);
+      });
+      // 外接手也用同一套动态模型（跑步/接球动作），浅色球衣区分
+      void loadPlayerModel(QB_MODEL_URL).then((template) => {
+        if (!template) return;
+        playerTemplate = template;
+        applyModel(wr, template, 0xcfe0ff);
+      });
+    }
   });
-  if (PLAYER_MODEL_URL) {
-    void loadPlayerModel(PLAYER_MODEL_URL).then((template) => {
-      if (!template) return;
-      playerTemplate = template;
-      for (const rig of [qb, wr, ...defenders]) applyPlayerModel(rig);
-    });
-  }
-  if (QB_MODEL_URL) {
-    void loadPlayerModel(QB_MODEL_URL).then((template) => {
-      if (!template) return;
-      qbTemplate = template;
-      applyModel(qb, qbTemplate);
-    });
-  }
 
   // ---- 模式：主页练习（单球员接球） / 模拟比赛（QB+WR+防守） ----
   type Mode = 'practice' | 'game';
@@ -194,9 +292,81 @@ function main(): void {
       controller.attempts > 0 ? `${Math.round((totalComplete / controller.attempts) * 100)}%` : '—';
   }
 
-  function showBanner(code: string, dynamic: boolean): void {
-    resultBanner.className = code === 'complete' ? 'complete' : 'incomplete';
-    resultBanner.innerHTML = `${resultHeadline(code as never, dynamic)}<span class="sub">${resultSubline(code as never)}</span>`;
+  // ---- 右下角评论区（抖音风格）----
+  const COMMENT_NAMES = ['看球的老王', '战术板', '端区钉子户', '夜跑选手', '8号球衣', '边线记者', '站在围栏外', '替补四分卫'];
+  const COMMENT_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd166', '#a78bfa', '#f472b6', '#60a5fa'];
+
+  function pushComment(text: string, tone: 'good' | 'bad' | 'perfect'): void {
+    const item = document.createElement('div');
+    item.className = `comment ${tone}`;
+    const name = COMMENT_NAMES[Math.floor(Math.random() * COMMENT_NAMES.length)];
+    const color = COMMENT_COLORS[Math.floor(Math.random() * COMMENT_COLORS.length)];
+    item.innerHTML = `<span class="cm-avatar" style="background:${color}">${name.slice(0, 1)}</span>
+      <span class="cm-body"><b>${name}</b><span class="cm-text">${text}</span></span>`;
+    commentFeed.appendChild(item);
+    while (commentFeed.children.length > 4) commentFeed.firstElementChild?.remove();
+    setTimeout(() => {
+      item.classList.add('leaving');
+      setTimeout(() => item.remove(), 380);
+    }, 4200);
+  }
+
+  function commentFor(code: PlayResultCode, dynamic: boolean): { text: string; tone: 'good' | 'bad' | 'perfect' } {
+    switch (code) {
+      case 'complete':
+        return dynamic ? { text: '完美接球！', tone: 'perfect' } : { text: '接球完成', tone: 'good' };
+      case 'drop':
+        return { text: '差一点！', tone: 'bad' };
+      case 'defensed':
+        return { text: '接球失败', tone: 'bad' };
+      case 'overthrow':
+        return { text: '传大了', tone: 'bad' };
+      case 'underthrow':
+        return { text: '传短了', tone: 'bad' };
+      case 'wide':
+        return { text: '传偏了', tone: 'bad' };
+      case 'tooLate':
+        return { text: '出手太晚', tone: 'bad' };
+    }
+  }
+
+  // ---- 接球后继续推进 / 球弹地物理 ----
+  const postCatch = { t: 0, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1) };
+  let wrCatch = false;
+  let catchTriggered = false;
+  const ballSim = { active: false, pos: new THREE.Vector3(), vel: new THREE.Vector3(), bounces: 0 };
+
+  function startPostCatch(): void {
+    postCatch.t = 2;
+    postCatch.pos.set(wr.group.position.x, 0, wr.group.position.z);
+    const v = controller.director?.runner.vel;
+    if (v && (Math.abs(v.x) > 0.01 || Math.abs(v.z) > 0.01)) postCatch.dir.set(v.x, 0, v.z).normalize();
+    else postCatch.dir.set(0, 0, 1);
+    playClip(wr, 'Run', { fade: 0.15 });
+  }
+
+  function startBallBounce(result: PlayResult): void {
+    if (result.code === 'drop') {
+      ballSim.pos.set(result.wrPosAtCatch.x, 1.5, result.wrPosAtCatch.z);
+      ballSim.vel.set((Math.random() - 0.5) * 2.2, 1.7, 1.2 + Math.random());
+    } else {
+      ballSim.pos.set(result.landing.x, 0.4, result.landing.z);
+      ballSim.vel.set((Math.random() - 0.5) * 2.4, 2.2, 0.8 + Math.random() * 1.6);
+    }
+    ballSim.bounces = 0;
+    ballSim.active = true;
+    ball.visible = true;
+  }
+
+  function qbThrowPose(): void {
+    const a = playClip(qb, 'Pass', { once: true, time: 4.05, timeScale: 1.5, fade: 0.1 });
+    if (!a) return;
+    if (handBall) handBall.visible = false;
+    ball.visible = true;
+    setTimeout(() => {
+      playClip(qb, 'Pass', { time: 4.05, paused: true, fade: 0.25 });
+      if (handBall) handBall.visible = true;
+    }, 2450);
   }
 
   const controller = new GameController({
@@ -210,15 +380,25 @@ function main(): void {
     onSnap: (play) => {
       playCall.setSelected(play.id);
       resultBanner.classList.add('hidden');
+      catchTriggered = false;
+      wrCatch = false;
+      postCatch.t = 0;
+      ballSim.active = false;
+      if (handBall) handBall.visible = true;
+      playClip(wr, 'Run', { fade: 0.15 });
     },
     onResult: (result, play) => {
       const duration = routeLength(play.route) / wrSpeed;
       const dynamic = result.code === 'complete' && result.tCatch < duration;
       if (result.code === 'complete') totalComplete += 1;
-      showBanner(result.code, dynamic);
+      const c = commentFor(result.code, dynamic);
+      pushComment(c.text, c.tone);
+      wrCatch = false;
+      if (result.code === 'complete') startPostCatch();
+      else startBallBounce(result);
       updateHud();
       if (resultTimer) clearTimeout(resultTimer);
-      resultTimer = setTimeout(() => controller.nextPlay(), 2200);
+      resultTimer = setTimeout(() => controller.nextPlay(), 2600);
     },
   });
 
@@ -248,17 +428,26 @@ function main(): void {
   });
 
   // ---- 手势：轻点 = 高球 lob，长按 = 平快球 bullet ----
+  function doThrow(type: ThrowType): void {
+    if (controller.state !== GameState.ROUTE) return;
+    controller.throwBall(type);
+    const r = controller.lastResult;
+    // 小概率脱手：判断为接住但手滑，球会弹地
+    if (r && r.code === 'complete' && Math.random() < 0.12) r.code = 'drop';
+    qbThrowPose();
+  }
+
   attachGesture(canvas, {
     onHoldStart: () => {
       if (controller.state === GameState.ROUTE) chargeRing.classList.remove('hidden');
     },
     onTap: () => {
       chargeRing.classList.add('hidden');
-      controller.throwBall('lob');
+      doThrow('lob');
     },
     onHold: () => {
       chargeRing.classList.add('hidden');
-      controller.throwBall('bullet');
+      doThrow('bullet');
     },
     onCancel: () => chargeRing.classList.add('hidden'),
   });
@@ -275,62 +464,104 @@ function main(): void {
     }
 
     controller.update(dt);
-    for (const m of playerMixers) m.mixer.update(dt);
+    rigAnims.forEach((a) => a.mixer.update(dt));
     const d = controller.director;
     const moving = !!d && !d.runner.done;
+    const state = controller.state;
 
-    if (d) {
+    // 接球成功后继续往前跑 2 秒，再站定
+    if (postCatch.t > 0) {
+      postCatch.t -= dt;
+      postCatch.pos.addScaledVector(postCatch.dir, wrSpeed * dt);
+      wr.group.position.copy(postCatch.pos);
+      wr.group.rotation.y = Math.atan2(postCatch.dir.x, postCatch.dir.z);
+      runPhase += dt * 10;
+      if (!rigAnims.has(wr)) animateRig(wr, runPhase, true);
+      if (postCatch.t <= 0) playClip(wr, 'Idle', { fade: 0.25 });
+    } else if (d && state !== GameState.RESULT && state !== GameState.RESOLVE) {
       wr.group.position.set(d.runner.pos.x, 0, d.runner.pos.z);
       if (moving) {
         wr.group.rotation.y = Math.atan2(d.runner.vel.x, d.runner.vel.z);
         runPhase += dt * 10;
-        animateRig(wr, runPhase, true);
+        if (!rigAnims.has(wr)) animateRig(wr, runPhase, true);
+        if (!wrCatch) playClip(wr, 'Run', { fade: 0.2 });
       } else {
         idlePhase += dt;
-        animateRig(wr, idlePhase * 2, false);
+        if (!rigAnims.has(wr)) animateRig(wr, idlePhase * 2, false);
+        if (!wrCatch) playClip(wr, 'Idle', { fade: 0.3 });
       }
-    } else {
+    } else if (!rigAnims.has(wr)) {
       idlePhase += dt;
       animateRig(wr, idlePhase * 2, false);
     }
 
-    // 接入真实球员模型后，用轻微起伏代替骨骼跑动
-    wr.modelHolder.position.y = moving ? Math.abs(Math.sin(runPhase)) * 0.06 : 0;
-    wr.modelHolder.rotation.z = moving ? Math.sin(runPhase) * 0.03 : 0;
-
-    // QB / 防守球员待机摆动
+    // QB / 防守球员待机
     idlePhase += dt * 0.5;
-    animateRig(qb, idlePhase, false);
+    if (!rigAnims.has(qb)) animateRig(qb, idlePhase, false);
     for (let i = 0; i < defenders.length; i++) animateRig(defenders[i], idlePhase + i, false);
 
-    switch (controller.state) {
+    switch (state) {
       case GameState.PLAY_CALL:
       case GameState.SNAP:
       case GameState.ROUTE: {
-        const t = performance.now() / 1000;
-        if (mode === 'game') {
-          ball.position.set(qb.group.position.x, 1.35 + Math.sin(t * 2) * 0.03, qb.group.position.z + 0.3);
+        if (handBall) {
+          ball.visible = false;
         } else {
-          ball.position.set(QB_POS.x, 1.35 + Math.sin(t * 2) * 0.03, QB_POS.z + 0.3);
+          ball.visible = true;
+          const t = performance.now() / 1000;
+          if (mode === 'game') {
+            ball.position.set(qb.group.position.x, 1.35 + Math.sin(t * 2) * 0.03, qb.group.position.z + 0.3);
+          } else {
+            ball.position.set(QB_POS.x, 1.35 + Math.sin(t * 2) * 0.03, QB_POS.z + 0.3);
+          }
         }
         break;
       }
       case GameState.USER_THROW:
       case GameState.BALL_FLIGHT: {
+        ball.visible = true;
         if (controller.lastResult) {
           const r = controller.lastResult;
           const traj = computeThrow(QB_POS, r.landing, r.throwType);
           const p = traj.posAt(controller.ballProgress);
           ball.position.set(p.x, 1.4 + traj.heightAt(controller.ballProgress), p.z);
+          // 球快到手时提前做接球动作
+          if (!catchTriggered) {
+            const flight = Math.max(0.001, r.tCatch - r.tThrow);
+            if (flight * (1 - controller.ballProgress) <= 0.65) {
+              catchTriggered = true;
+              wrCatch = true;
+              playClip(wr, 'Catch', { once: true, fade: 0.12 });
+            }
+          }
         }
         break;
       }
       case GameState.RESOLVE:
       case GameState.RESULT: {
-        if (controller.lastResult) {
+        ball.visible = true;
+        if (ballSim.active) {
+          ballSim.vel.y -= 10.7 * dt;
+          ballSim.pos.addScaledVector(ballSim.vel, dt);
+          if (ballSim.pos.y < 0.12) {
+            ballSim.pos.y = 0.12;
+            ballSim.vel.y = -ballSim.vel.y * 0.45;
+            ballSim.vel.x *= 0.7;
+            ballSim.vel.z *= 0.7;
+            ballSim.bounces += 1;
+            if (ballSim.bounces > 4 || Math.abs(ballSim.vel.y) < 0.6) {
+              ballSim.active = false;
+              ballSim.vel.set(0, 0, 0);
+            }
+          }
+          ball.position.copy(ballSim.pos);
+          ball.rotation.x += dt * 8;
+          ball.rotation.z += dt * 4;
+        } else if (controller.lastResult) {
           const r = controller.lastResult;
-          if (r.code === 'complete' && d) {
-            ball.position.set(r.wrPosAtCatch.x, 1.6, r.wrPosAtCatch.z);
+          if (r.code === 'complete') {
+            // 球在怀里，跟着外接手继续推进
+            ball.position.set(wr.group.position.x, 1.45, wr.group.position.z + 0.15);
           } else {
             ball.position.set(r.landing.x, 0.3, r.landing.z);
           }
@@ -383,6 +614,10 @@ function main(): void {
   // ---- 更新提示 ----
   el('update-now').addEventListener('click', () => pwa.applyUpdate());
   el('update-later').addEventListener('click', () => updateToast.classList.add('hidden'));
+  el('update-notes').addEventListener('click', () => {
+    updateToast.classList.add('hidden');
+    openChangelog();
+  });
 
   // ---- 离线状态：核心玩法继续，联网功能降级 ----
   let firstConnectivity = true;

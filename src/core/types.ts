@@ -91,7 +91,14 @@ export interface PlayDef {
 
 // ---- 一档结果 ----
 
-export type PlayResultCode = 'complete' | 'defensed' | 'overthrow' | 'underthrow' | 'wide' | 'tooLate';
+export type PlayResultCode =
+  | 'complete'
+  | 'drop'
+  | 'defensed'
+  | 'overthrow'
+  | 'underthrow'
+  | 'wide'
+  | 'tooLate';
 
 export interface PlayResult {
   code: PlayResultCode;

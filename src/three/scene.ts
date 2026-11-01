@@ -86,24 +86,34 @@ function makeFieldTexture(): THREE.CanvasTexture {
     ctx.fillRect(0, y0, W, y1 - y0);
   }
 
-  // ---- 草皮颗粒（低成本噪点，避免大色块塑料感）----
+  // ---- 草叶质感：细短竖线 + 深浅变化，比纯噪点更像草坪 ----
   const rnd = mulberry32(20261101);
-  ctx.globalAlpha = 0.06;
-  for (let i = 0; i < 5000; i++) {
+  for (let i = 0; i < 16000; i++) {
     const x = rnd() * W;
     const y = rnd() * H;
-    ctx.fillStyle = rnd() > 0.5 ? '#1d5a25' : '#4f9c56';
-    ctx.fillRect(x, y, 2, 2);
+    const h = 2 + rnd() * 5;
+    ctx.globalAlpha = 0.05 + rnd() * 0.08;
+    ctx.fillStyle = rnd() > 0.5 ? '#1d5a25' : '#57a55e';
+    ctx.fillRect(x, y, 1.4, h);
   }
   ctx.globalAlpha = 1;
 
-  // ---- 两端端区 ----
-  const endZone = (z0: number, z1: number, bg: string) => {
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, pz(z1), W, pz(z0) - pz(z1));
+  // ---- 两端端区：球队色渐变 + 端区文字 ----
+  const endZone = (z0: number, z1: number) => {
+    const y0 = pz(z1);
+    const y1 = pz(z0);
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, '#0b2648');
+    g.addColorStop(1, '#123f70');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y0, W, y1 - y0);
+    // 端区描边
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 0.12 * SY;
+    ctx.strokeRect(0, y0, W, y1 - y0);
   };
-  endZone(-ENDZONE_DEPTH, 0, 'rgba(10, 32, 66, 0.92)');
-  endZone(FIELD_LENGTH, FIELD_LENGTH + ENDZONE_DEPTH, 'rgba(10, 32, 66, 0.92)');
+  endZone(-ENDZONE_DEPTH, 0);
+  endZone(FIELD_LENGTH, FIELD_LENGTH + ENDZONE_DEPTH);
 
   // 端区斜纹
   ctx.save();
@@ -172,9 +182,11 @@ function makeFieldTexture(): THREE.CanvasTexture {
   }
 
   // ---- 端区文字（只画远端，近端离相机太近会被放得很大）----
-  ctx.font = `800 ${Math.round(1.5 * SY)}px system-ui, "Arial Black", sans-serif`;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
-  ctx.fillText('E N D   Z O N E', px(0), pz(FIELD_LENGTH + ENDZONE_DEPTH / 2));
+  ctx.font = `900 ${Math.round(2.1 * SY)}px system-ui, "Arial Black", sans-serif`;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('FFSIMU', px(0), pz(FIELD_LENGTH + ENDZONE_DEPTH / 2));
 
   // ---- 中圈 + 开球点 ----
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
@@ -286,13 +298,13 @@ export function animateRig(rig: PlayerRig, phase: number, running: boolean): voi
 function makeBall(): THREE.Object3D {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color: 0x7a3f16, roughness: 0.55, metalness: 0.05 });
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 14), mat);
-  ball.scale.set(1, 0.72, 1.7);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 18, 12), mat);
+  ball.scale.set(1, 0.78, 1.6);
   ball.castShadow = true;
   group.add(ball);
   const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 });
-  for (const dz of [-0.16, 0.16]) {
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.172, 0.172, 0.035, 16, 1, true), stripeMat);
+  for (const dz of [-0.09, 0.09]) {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.101, 0.101, 0.022, 14, 1, true), stripeMat);
     ring.rotation.x = Math.PI / 2;
     ring.scale.set(1, 1, 0.78);
     ring.position.z = dz;
@@ -409,7 +421,7 @@ export function buildScene(): FieldObjects {
 
   // 场地外围：深色柏油 + 混凝土缓冲区，街球场的质感
   const outer = new THREE.Mesh(
-    new THREE.PlaneGeometry(420, 420),
+    new THREE.PlaneGeometry(900, 900),
     new THREE.MeshStandardMaterial({ color: 0x1c1722, roughness: 1 }),
   );
   outer.rotation.x = -Math.PI / 2;
@@ -448,9 +460,9 @@ export function buildScene(): FieldObjects {
   scene.add(ground);
 
   // 黄昏光照：低角度暖色太阳 + 品红环境光 + 冷色补光
-  scene.add(new THREE.HemisphereLight(0xffc6a8, 0x3a2c3a, 1.1));
-  scene.add(new THREE.AmbientLight(0x6a4a62, 0.55));
-  const sun = new THREE.DirectionalLight(0xffb07a, 3.4);
+  scene.add(new THREE.HemisphereLight(0xffc6a8, 0x3a2c3a, 1.45));
+  scene.add(new THREE.AmbientLight(0x6a4a62, 0.65));
+  const sun = new THREE.DirectionalLight(0xffb07a, 4.0);
   sun.position.copy(SUN_DIR).multiplyScalar(140);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);

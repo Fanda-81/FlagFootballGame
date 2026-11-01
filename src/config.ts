@@ -12,9 +12,12 @@ export const QB_MODEL_URL: string | null = params.get('qb') ?? './models/qb.glb'
 /** 头盔模型路径 */
 export const HELMET_MODEL_URL: string = params.get('helmet') ?? './models/helmet.glb';
 
+/** 动作库（跑步/接球/传球/待机，只含骨架不含网格） */
+export const ANIMS_URL: string = params.get('anims') ?? './models/anims.glb';
+
 /** 离线包需要缓存的资源（代码/图标由 Service Worker 预缓存，这里只列模型） */
 export function offlineAssets(): string[] {
-  const urls = [HELMET_MODEL_URL];
+  const urls = [HELMET_MODEL_URL, ANIMS_URL];
   if (PLAYER_MODEL_URL) urls.push(PLAYER_MODEL_URL);
   if (QB_MODEL_URL) urls.push(QB_MODEL_URL);
   return urls;

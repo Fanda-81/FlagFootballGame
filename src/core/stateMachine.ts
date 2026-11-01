@@ -123,6 +123,8 @@ export function resultHeadline(code: PlayResult['code'], dynamic: boolean): stri
   switch (code) {
     case 'complete':
       return dynamic ? '完美接球！' : '接球完成！';
+    case 'drop':
+      return '差一点！';
     case 'defensed':
       return '被防守破坏！';
     case 'overthrow':
@@ -140,6 +142,8 @@ export function resultSubline(code: PlayResult['code']): string {
   switch (code) {
     case 'complete':
       return '连击 +1';
+    case 'drop':
+      return '球从手里滑掉了，再试一次';
     case 'defensed':
       return '防守球员蹲守落点——换条路线或提前出手';
     case 'overthrow':

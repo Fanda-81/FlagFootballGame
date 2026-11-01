@@ -131,7 +131,7 @@ function buildCity(): THREE.Group {
   const geoCache: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 30; i++) {
     const w = 8 + Math.random() * 12;
-    const h = 12 + Math.random() * 38;
+    const h = 10 + Math.random() * 26;
     const d = 8 + Math.random() * 10;
     const x = (Math.random() - 0.5) * 340;
     const z = 115 + Math.random() * 110;
@@ -143,7 +143,7 @@ function buildCity(): THREE.Group {
   for (let i = 0; i < 8; i++) {
     const side = i % 2 === 0 ? -1 : 1;
     const w = 8 + Math.random() * 10;
-    const h = 10 + Math.random() * 22;
+    const h = 8 + Math.random() * 14;
     const d = 8 + Math.random() * 10;
     const x = side * (95 + Math.random() * 60);
     const z = 5 + Math.random() * 90;
@@ -305,24 +305,32 @@ function buildLightPoles(): THREE.Group {
   return group;
 }
 
-/** 街边道具：路障 + 长椅 */
+/** 街边道具：路障（部分随机倒伏）+ 长椅 */
 function buildProps(): THREE.Group {
   const group = new THREE.Group();
   const coneMat = new THREE.MeshStandardMaterial({ color: 0xff6a2a, roughness: 0.7 });
-  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.7 });
-  for (const [x, z] of [
+  const spots: Array<[number, number]> = [
     [-15.2, -6],
     [15.2, -6],
     [-15.2, 10],
     [15.2, 36],
     [-15.2, 44],
-  ]) {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1, 10), coneMat);
-    cone.position.set(x, 0.5, z);
+    [15.2, 20],
+    [-15.4, 30],
+  ];
+  for (const [x, z] of spots) {
+    const fallen = Math.random() < 0.38;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1, 12), coneMat);
+    if (fallen) {
+      // 倒下：绕 Z 轴放平 + 随机朝向，位置略微散开
+      cone.rotation.z = (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2);
+      cone.rotation.y = Math.random() * Math.PI * 2;
+      cone.position.set(x + (Math.random() - 0.5) * 1.4, 0.33, z + (Math.random() - 0.5) * 1.4);
+    } else {
+      cone.position.set(x, 0.5, z);
+      cone.rotation.y = Math.random() * Math.PI;
+    }
     group.add(cone);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.18, 10), whiteMat);
-    band.position.set(x, 0.62, z);
-    group.add(band);
   }
 
   // 远端长椅
@@ -340,10 +348,61 @@ function buildProps(): THREE.Group {
   return group;
 }
 
+/** 远山剪影（三层，越远越淡） */
+function buildMountains(): THREE.Group {
+  const group = new THREE.Group();
+  const W = 1024;
+  const H = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const ridge = (base: number, amp: number, color: string, seed: number) => {
+    let a = seed;
+    const rnd = () => {
+      a = (a * 1664525 + 1013904223) >>> 0;
+      return a / 4294967296;
+    };
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    const pts: number[] = [];
+    const n = 26;
+    for (let i = 0; i <= n; i++) pts.push(base + Math.sin(i * 0.7 + seed) * amp * 0.5 + rnd() * amp * 0.7);
+    ctx.lineTo(0, H - pts[0] * H);
+    for (let i = 1; i <= n; i++) {
+      const x = (i / n) * W;
+      const y = H - pts[i] * H;
+      const px = ((i - 1) / n) * W;
+      const py = H - pts[i - 1] * H;
+      ctx.quadraticCurveTo((px + x) / 2, Math.min(py, y) - 12, x, y);
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  };
+
+  ridge(0.5, 0.16, '#6b3d63', 7);
+  ridge(0.4, 0.2, '#4c2a4f', 13);
+  ridge(0.28, 0.24, '#2e1b37', 29);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1100, 150),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: true, side: THREE.DoubleSide }),
+  );
+  mesh.position.set(0, 74, 300);
+  group.add(mesh);
+  return group;
+}
+
 /** 街球场外景总装 */
 export function buildStadium(): THREE.Group {
   const group = new THREE.Group();
   group.name = 'street-stadium';
+  group.add(buildMountains());
   group.add(buildFence());
   group.add(buildCity());
   group.add(buildWall());
@@ -411,6 +470,17 @@ export async function loadHelmet(url = './models/helmet.glb'): Promise<THREE.Obj
 export interface PlayerModelAsset {
   scene: THREE.Object3D;
   animations: THREE.AnimationClip[];
+}
+
+/** 只含骨架与动作的 glb：把动画复用到任何同骨架的模型上 */
+export async function loadAnimationClips(url: string): Promise<THREE.AnimationClip[]> {
+  try {
+    const gltf = await loader.loadAsync(url);
+    return gltf.animations ?? [];
+  } catch (e) {
+    console.warn('[anim] 动画文件加载失败：', e);
+    return [];
+  }
 }
 
 /**

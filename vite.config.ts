@@ -22,8 +22,8 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ['icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
-        name: 'Flag Football Pass — 腰旗橄榄球传球训练',
-        short_name: 'FF Pass',
+        name: 'FFSimu — 腰旗橄榄球传球训练',
+        short_name: 'FFSimu',
         description: '腰旗橄榄球传球训练：Madden 风格战术 + 纵向 3D 球场，长按平快球、轻点高球',
         theme_color: '#0b3d1f',
         background_color: '#070b14',

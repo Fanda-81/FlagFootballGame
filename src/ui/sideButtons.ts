@@ -15,6 +15,20 @@ import {
 } from '../offline';
 import { openModal } from './modals';
 import { routeSvg } from './playCall';
+import { CHANGELOG } from '../data/changelog';
+
+/** 更新内容弹窗 */
+export function openChangelog(): void {
+  const body = document.createElement('div');
+  body.innerHTML = CHANGELOG.map(
+    (e) => `
+    <div class="changelog-entry">
+      <div class="changelog-head"><b>v${e.version}</b><span>${e.date}</span></div>
+      <ul>${e.items.map((i) => `<li>${i}</li>`).join('')}</ul>
+    </div>`,
+  ).join('');
+  openModal('更新内容', body);
+}
 
 const RARITY_LABEL: Record<string, string> = {
   common: '普通',
@@ -121,6 +135,11 @@ function openSettings(opts: {
     <div class="modal-row"><label>🔄 版本</label>
       <span class="set-value">v${__APP_VERSION__} · ${buildTime}</span>
       <button class="btn" id="set-update" style="padding:7px 14px;font-size:13px">检查更新</button></div>
+    <div class="modal-row"><label>📝 更新内容</label>
+      <span class="set-value">每次更新都可查看</span>
+      <button class="btn" id="set-notes" style="padding:7px 14px;font-size:13px">查看</button></div>
+    <div class="modal-row"><label>👤 制作</label>
+      <span class="set-value">Fanda</span></div>
     <div class="modal-row"><label>♻️ 重置数据</label>
       <button class="btn" id="set-reset">清空收藏与设置</button></div>
     <p style="color:var(--text-dim);font-size:12px">「离线包」会把球场模型缓存到本机；缓存完成后断网也能进游戏，联网功能（商城/检查更新）会提示不可用。</p>`;
@@ -200,6 +219,10 @@ function openSettings(opts: {
   });
 
   modal.el.querySelector('#set-update')?.addEventListener('click', () => opts.onCheckUpdate());
+  modal.el.querySelector('#set-notes')?.addEventListener('click', () => {
+    modal.close();
+    openChangelog();
+  });
 
   modal.el.querySelector('#set-reset')?.addEventListener('click', () => {
     resetAll();
