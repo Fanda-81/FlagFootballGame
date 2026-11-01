@@ -261,15 +261,21 @@ export async function loadHelmet(url = './models/helmet.glb'): Promise<THREE.Obj
   }
 }
 
+/** 加载后的球员模型：场景根节点 + 自带动画（可为空） */
+export interface PlayerModelAsset {
+  scene: THREE.Object3D;
+  animations: THREE.AnimationClip[];
+}
+
 /**
  * 全身球员模型（Tripo / Mixamo 导出的 glb）：归一化到 1.92yd 高、脚底贴地、正面朝 +z。
- * 返回模板；骨骼模型请用 cloneSkinned() 复制。
+ * 返回模板与动画；骨骼模型请用 cloneSkeleton() 复制。
  */
 export async function loadPlayerModel(
   url: string,
   targetHeight = 1.92,
   facing: 'z' | '-z' | 'x' | '-x' = 'z',
-): Promise<THREE.Object3D | null> {
+): Promise<PlayerModelAsset | null> {
   try {
     const gltf = await loader.loadAsync(url);
     const obj = gltf.scene;
@@ -291,7 +297,7 @@ export async function loadPlayerModel(
         mesh.frustumCulled = false;
       }
     });
-    return obj;
+    return { scene: obj, animations: gltf.animations ?? [] };
   } catch (e) {
     console.warn('[player] 球员模型加载失败，使用几何球员：', e);
     return null;

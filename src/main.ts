@@ -18,7 +18,8 @@ import { attachGesture } from './ui/gestures';
 import { renderActionMenu } from './ui/playCall';
 import { bindSideButtons } from './ui/sideButtons';
 import { loadSettings, saveSettings } from './data/storage';
-import { HELMET_MODEL_URL, PLAYER_MODEL_URL } from './config';
+import { HELMET_MODEL_URL, PLAYER_MODEL_URL, QB_MODEL_URL } from './config';
+import type { PlayerModelAsset } from './three/stadium';
 import { initPWA } from './pwa';
 import {
   isIOS,
@@ -76,7 +77,8 @@ function main(): void {
 
   // ---- 外部模型：真实头盔 / 可选全身球员（失败静默回退几何体） ----
   let helmetTemplate: THREE.Object3D | null = null;
-  let playerTemplate: THREE.Object3D | null = null;
+  let playerTemplate: PlayerModelAsset | null = null;
+  let qbTemplate: PlayerModelAsset | null = null;
   const defenders: PlayerRig[] = [];
   const DEFENDER_COUNT = 4;
 
@@ -100,12 +102,24 @@ function main(): void {
     rig.headAnchor.add(clone);
   }
 
+  /** 用真实球员模型替换几何身体（静态预览：把动画停在一个自然姿势） */
+  function applyModel(rig: PlayerRig, asset: PlayerModelAsset, poseTime = 1.2): void {
+    rig.body.visible = false;
+    rig.modelHolder.clear();
+    const clone = cloneSkeleton(asset.scene);
+    rig.modelHolder.add(clone);
+    if (asset.animations.length) {
+      const mixer = new THREE.AnimationMixer(clone);
+      mixer.clipAction(asset.animations[0]).play();
+      mixer.setTime(poseTime);
+    }
+  }
+
   /** 用全身球员模型替换几何身体 */
   function applyPlayerModel(rig: PlayerRig): void {
     if (!playerTemplate) return;
-    rig.body.visible = false;
-    rig.modelHolder.clear();
-    rig.modelHolder.add(cloneSkeleton(playerTemplate));
+    if (rig === qb && qbTemplate) return;
+    applyModel(rig, playerTemplate);
   }
 
   void loadHelmet(HELMET_MODEL_URL).then((template) => {
@@ -118,6 +132,13 @@ function main(): void {
       if (!template) return;
       playerTemplate = template;
       for (const rig of [qb, wr, ...defenders]) applyPlayerModel(rig);
+    });
+  }
+  if (QB_MODEL_URL) {
+    void loadPlayerModel(QB_MODEL_URL).then((template) => {
+      if (!template) return;
+      qbTemplate = template;
+      applyModel(qb, qbTemplate);
     });
   }
 

@@ -177,7 +177,15 @@ blender -b joe04.blend -P tools/blender/export_player.py -- player.glb 25000 102
 |---|---|---|
 | 头盔 | `public/models/helmet.glb` | 已接入，自动缩放到头围 0.62yd、按球队主色给外壳调色 |
 | 全身球员 | `public/models/player.glb` | 把 `src/config.ts` 的 `PLAYER_MODEL_URL` 改成 `'./models/player.glb'`，自动归一到 1.92yd 身高、脚底贴地、正面朝 +z |
+| **只换 QB** | 任意 | URL 参数：`?qb=./models/xxx.glb`（优先于 `player`，用于试装/对比） |
 | 替代头盔 | 任意 | URL 参数临时覆盖：`?player=./models/p1.glb&helmet=./models/h2.glb` |
+
+想单独看一个 `.glb` 长什么样（不启动游戏），用仓库里的预览页：
+
+```bash
+npm run dev
+# 浏览器打开 http://localhost:5173/tools/model-viewer.html?url=./models/player.glb
+```
 
 球员模型建议 **T-pose 或 A-pose、正面朝 +z、脚底在 y=0**（loader 也会按包围盒自动纠正）。
 静态模型运行时会用轻微起伏代替跑动动画；想要真正的跑步动作，需要给模型绑骨骼并在 Blender/Mixamo 里做动画，再导出带 animation 的 glb（本项目暂未接动画混合器）。
