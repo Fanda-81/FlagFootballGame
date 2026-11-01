@@ -102,16 +102,20 @@ function main(): void {
     rig.headAnchor.add(clone);
   }
 
-  /** 用真实球员模型替换几何身体（静态预览：把动画停在一个自然姿势） */
-  function applyModel(rig: PlayerRig, asset: PlayerModelAsset, poseTime = 1.2): void {
+  /** 用真实球员模型替换几何身体，并播放模型自带的动画 */
+  const playerMixers: Array<{ mixer: THREE.AnimationMixer; rig: PlayerRig }> = [];
+
+  function applyModel(rig: PlayerRig, asset: PlayerModelAsset): void {
     rig.body.visible = false;
     rig.modelHolder.clear();
     const clone = cloneSkeleton(asset.scene);
     rig.modelHolder.add(clone);
     if (asset.animations.length) {
       const mixer = new THREE.AnimationMixer(clone);
-      mixer.clipAction(asset.animations[0]).play();
-      mixer.setTime(poseTime);
+      const action = mixer.clipAction(asset.animations[0]);
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.play();
+      playerMixers.push({ mixer, rig });
     }
   }
 
@@ -271,6 +275,7 @@ function main(): void {
     }
 
     controller.update(dt);
+    for (const m of playerMixers) m.mixer.update(dt);
     const d = controller.director;
     const moving = !!d && !d.runner.done;
 

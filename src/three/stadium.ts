@@ -1,208 +1,354 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { FIELD_LENGTH, HALF_WIDTH } from './dimensions';
 
 /**
- * 球场外景与外部模型加载。
+ * 街球风外景：铁丝网围栏 + 远端涂鸦墙 + 城市天际线 + 灯杆 + 路障。
  *
- * 设计约束（很重要）：
- *   相机在 z ∈ [-34, -10]、y ∈ [5.5, 21.5] 的走廊里，沿 +z 看向球场。
- *   任何落在「球场 + 相机走廊」里的实体都会挡住球员/球场。
- *   因此看台只放在 z > 57.5（远端）与 |x| > 16.35（两侧），近端完全留空；
- *   相机最低点 y=5.5 也不会穿进近端任何结构。
+ * 约束不变：相机走廊 z ∈ [-35, -14]、y ∈ [6.5, 21]。
+ * 所有实体只放在远端（z > 58）和两侧（|x| > 16.8），近端保持空旷，任何缩放都不挡视线。
  */
 
-const ROWS = 12;
-const RISE = 1.25;
-const RUN = 2.1;
-const SIDE_START_X = HALF_WIDTH + 3; // 16.35：紧贴边线外侧
-const STAND_Z0 = -12;
-const STAND_Z1 = 56;
-const FAR_Z0 = 57.5;
-const FAR_HALF_W = 42;
-const BACK_WALL_H = 19;
-const CROWD_COLORS = [0x9e3a3a, 0x3a5f9e, 0xb0a23c, 0x4a8f52, 0xb06a2e, 0x7a4f96, 0x3f8a8a, 0xc9d2df];
-
-const STAND_MAT = new THREE.MeshStandardMaterial({
-  vertexColors: true,
-  roughness: 0.92,
-  metalness: 0.02,
-});
-
-function pushBox(
-  list: THREE.BufferGeometry[],
-  w: number,
-  h: number,
-  d: number,
-  x: number,
-  y: number,
-  z: number,
-  shade: THREE.Color,
-): void {
-  const geo = new THREE.BoxGeometry(w, h, d);
-  geo.translate(x, y, z);
-  const count = geo.attributes.position.count;
-  const colors = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    colors[i * 3] = shade.r;
-    colors[i * 3 + 1] = shade.g;
-    colors[i * 3 + 2] = shade.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  list.push(geo);
-}
-
-/** 阶梯看台几何 + 人群 */
-function buildStands(): { group: THREE.Group } {
-  const group = new THREE.Group();
-  const solids: THREE.BufferGeometry[] = [];
-  const crowdSpots: Array<{ x: number; y: number; z: number }> = [];
-
-  const shadeA = new THREE.Color(0x2c3648);
-  const shadeB = new THREE.Color(0x35415a);
-
-  // 两侧看台
-  const sideLen = STAND_Z1 - STAND_Z0;
-  const sideCenterZ = (STAND_Z0 + STAND_Z1) / 2;
-  for (const side of [-1, 1]) {
-    for (let row = 0; row < ROWS; row++) {
-      const x = side * (SIDE_START_X + row * RUN);
-      const y = 0.5 + row * RISE;
-      pushBox(solids, RUN + 0.1, RISE, sideLen, x, y, sideCenterZ, row % 2 ? shadeA : shadeB);
-      const seats = 38;
-      for (let s = 0; s < seats; s++) {
-        crowdSpots.push({
-          x: x + (Math.random() - 0.5) * 1.2,
-          y: y + RISE / 2,
-          z: STAND_Z0 + 2 + (s / seats) * (sideLen - 4) + (Math.random() - 0.5) * 0.9,
-        });
-      }
-    }
-  }
-
-  // 远端看台
-  for (let row = 0; row < ROWS; row++) {
-    const z = FAR_Z0 + row * RUN;
-    const y = 0.5 + row * RISE;
-    pushBox(solids, FAR_HALF_W * 2, RISE, RUN + 0.1, 0, y, z, row % 2 ? shadeA : shadeB);
-    const seats = 64;
-    for (let s = 0; s < seats; s++) {
-      crowdSpots.push({
-        x: -FAR_HALF_W + 2 + (s / seats) * (FAR_HALF_W * 2 - 4) + (Math.random() - 0.5) * 0.9,
-        y: y + RISE / 2,
-        z: z + (Math.random() - 0.5) * 1.1,
-      });
-    }
-  }
-
-  // 外围挡墙：把看台外的天空/虚空收住，形成碗状
-  const wallShade = new THREE.Color(0x1a2233);
-  const backX = SIDE_START_X + ROWS * RUN + 0.8;
-  for (const side of [-1, 1]) {
-    pushBox(solids, 1.2, BACK_WALL_H, STAND_Z1 - STAND_Z0 + 34, side * backX, BACK_WALL_H / 2, 30, wallShade);
-  }
-  pushBox(solids, backX * 2 + 1.2, BACK_WALL_H, 1.2, 0, BACK_WALL_H / 2, FAR_Z0 + ROWS * RUN + 3, wallShade);
-
-  const merged = mergeGeometries(solids, false);
-  if (merged) {
-    merged.computeVertexNormals();
-    const mesh = new THREE.Mesh(merged, STAND_MAT);
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    group.add(mesh);
-  }
-
-  // 人群：单 InstancedMesh
-  const crowdGeo = new THREE.BoxGeometry(0.42, 0.72, 0.36);
-  crowdGeo.translate(0, 0.36, 0);
-  const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
-  const crowd = new THREE.InstancedMesh(crowdGeo, crowdMat, crowdSpots.length);
-  const m = new THREE.Matrix4();
-  const color = new THREE.Color();
-  crowdSpots.forEach((spot, i) => {
-    m.makeRotationY((Math.random() - 0.5) * 0.5);
-    m.setPosition(spot.x, spot.y, spot.z);
-    crowd.setMatrixAt(i, m);
-    color.setHex(CROWD_COLORS[Math.floor(Math.random() * CROWD_COLORS.length)]);
-    crowd.setColorAt(i, color);
-  });
-  crowd.instanceMatrix.needsUpdate = true;
-  if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-  group.add(crowd);
-
-  return { group };
-}
-
-/** 远端记分牌：Canvas 贴图 + 灯柱 */
-function buildScoreboard(): THREE.Group {
-  const group = new THREE.Group();
-
+/** 铁丝网纹理（菱形网格，带透明通道） */
+function makeFenceTexture(): THREE.Texture {
+  const S = 128;
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
+  canvas.width = S;
+  canvas.height = S;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#050a14';
-  ctx.fillRect(0, 0, 512, 256);
-  ctx.strokeStyle = '#2f7fe0';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(8, 8, 496, 240);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffb300';
-  ctx.font = '900 52px system-ui, "Arial Black", sans-serif';
-  ctx.fillText('FLAG BOWL', 256, 78);
-  ctx.fillStyle = '#e8eefc';
-  ctx.font = '800 64px system-ui, "Arial Black", sans-serif';
-  ctx.fillText('0  :  0', 256, 156);
-  ctx.fillStyle = '#7fa6dd';
-  ctx.font = '600 28px system-ui, sans-serif';
-  ctx.fillText('Q1   12:00', 256, 212);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const panel = new THREE.Mesh(
-    new THREE.PlaneGeometry(24, 12),
-    new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
-  );
-  panel.position.set(0, 21, FAR_Z0 + ROWS * RUN + 2.4);
-  panel.rotation.y = Math.PI;
-  group.add(panel);
-
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(25.2, 13.2, 0.8),
-    new THREE.MeshStandardMaterial({ color: 0x121a29, roughness: 0.8 }),
-  );
-  frame.position.set(0, 21, FAR_Z0 + ROWS * RUN + 3);
-  group.add(frame);
-
-  // 灯柱（远端两角）
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a3446, roughness: 0.7, metalness: 0.5 });
-  for (const side of [-1, 1]) {
-    const x = side * (FAR_HALF_W - 2);
-    const z = FAR_Z0 + ROWS * RUN + 4;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 26, 8), poleMat);
-    pole.position.set(x, 13, z);
-    group.add(pole);
-    // 灯架：深色支架 + 低亮面板，避免夜空里出现两块刺眼的白块
-    const rig = new THREE.Mesh(new THREE.BoxGeometry(7, 0.6, 0.6), poleMat);
-    rig.position.set(x, 26, z);
-    group.add(rig);
-    const lampMat = new THREE.MeshBasicMaterial({ color: 0x9aa6b8, toneMapped: false });
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.6, 0.25), lampMat);
-    lamp.position.set(x, 26.8, z - 0.4);
-    lamp.rotation.x = 0.28;
-    group.add(lamp);
+  ctx.clearRect(0, 0, S, S);
+  ctx.strokeStyle = 'rgba(200, 210, 225, 0.9)';
+  ctx.lineWidth = 3;
+  const step = 32;
+  for (let i = -S; i < S * 2; i += step) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + S, S);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(i, S);
+    ctx.lineTo(i + S, 0);
+    ctx.stroke();
   }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function buildFence(): THREE.Group {
+  const group = new THREE.Group();
+  const fenceTex = makeFenceTexture();
+  const fenceMat = new THREE.MeshStandardMaterial({
+    map: fenceTex,
+    transparent: true,
+    alphaTest: 0.25,
+    side: THREE.DoubleSide,
+    metalness: 0.35,
+    roughness: 0.6,
+    color: 0xc9d2e0,
+  });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, metalness: 0.6, roughness: 0.5 });
+
+  const H = 3.4;
+  const rail = new THREE.MeshStandardMaterial({ color: 0x4a505c, metalness: 0.6, roughness: 0.5 });
+
+  // 两侧围栏（沿 z）
+  for (const side of [-1, 1]) {
+    const x = side * (HALF_WIDTH + 3.6);
+    const len = 74;
+    const zc = 22;
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(len, H), fenceMat.clone());
+    const mat = plane.material as THREE.MeshStandardMaterial;
+    if (mat.map) {
+      mat.map = mat.map.clone();
+      mat.map.needsUpdate = true;
+      mat.map.repeat.set(len / 3.2, H / 3.2);
+    }
+    plane.rotation.y = Math.PI / 2;
+    plane.position.set(x, H / 2, zc);
+    group.add(plane);
+
+    // 顶部横杆 + 立柱
+    for (const y of [H - 0.06, 0.9]) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, len, 6), rail);
+      bar.rotation.x = Math.PI / 2;
+      bar.position.set(x, y, zc);
+      group.add(bar);
+    }
+    for (let z = zc - len / 2; z <= zc + len / 2; z += 6) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, H + 0.3, 6), postMat);
+      post.position.set(x, (H + 0.3) / 2, z);
+      group.add(post);
+    }
+  }
+
+  // （远端不设围栏：让涂鸦墙和城市天际线完整露出来）
 
   return group;
 }
 
-/** 程序化开放式看台（默认球场外景） */
+/** 城市天际线：暗色楼体 + 暖色窗光 */
+function buildCity(): THREE.Group {
+  const group = new THREE.Group();
+
+  const S = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, S, S);
+  const rnd = (() => {
+    let a = 1234567;
+    return () => {
+      a = (a * 1664525 + 1013904223) >>> 0;
+      return a / 4294967296;
+    };
+  })();
+  for (let y = 5; y < S - 5; y += 13) {
+    for (let x = 5; x < S - 5; x += 11) {
+      if (rnd() < 0.5) {
+        ctx.fillStyle = rnd() < 0.5 ? '#ffcf8a' : '#ffb066';
+        ctx.globalAlpha = 0.4 + rnd() * 0.4;
+        ctx.fillRect(x, y, 4, 6);
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+  const winTex = new THREE.CanvasTexture(canvas);
+  winTex.colorSpace = THREE.SRGBColorSpace;
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x120e1e,
+    emissive: 0xffb066,
+    emissiveMap: winTex,
+    emissiveIntensity: 0.55,
+    roughness: 0.95,
+  });
+
+  const geoCache: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 30; i++) {
+    const w = 8 + Math.random() * 12;
+    const h = 12 + Math.random() * 38;
+    const d = 8 + Math.random() * 10;
+    const x = (Math.random() - 0.5) * 340;
+    const z = 115 + Math.random() * 110;
+    const geo = new THREE.BoxGeometry(w, h, d);
+    geo.translate(x, h / 2, z);
+    geoCache.push(geo);
+  }
+  // 两侧的近处楼体
+  for (let i = 0; i < 8; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const w = 8 + Math.random() * 10;
+    const h = 10 + Math.random() * 22;
+    const d = 8 + Math.random() * 10;
+    const x = side * (95 + Math.random() * 60);
+    const z = 5 + Math.random() * 90;
+    const geo = new THREE.BoxGeometry(w, h, d);
+    geo.translate(x, h / 2, z);
+    geoCache.push(geo);
+  }
+
+  // 合并成 1 个 mesh（顶点数很少）
+  const merged = mergeBoxes(geoCache);
+  if (merged) {
+    const mesh = new THREE.Mesh(merged, mat);
+    group.add(mesh);
+  }
+  return group;
+}
+
+/** 简易合并（避免引入额外依赖）：把顶点/法线/UV 拼起来 */
+function mergeBoxes(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
+  if (geos.length === 0) return null;
+  const pos: number[] = [];
+  const norm: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  let offset = 0;
+  for (const g of geos) {
+    const ng = g.index ? g.toNonIndexed() : g;
+    const p = ng.attributes.position.array as Float32Array;
+    const n = ng.attributes.normal.array as Float32Array;
+    const u = ng.attributes.uv.array as Float32Array;
+    for (let i = 0; i < p.length; i++) pos.push(p[i]);
+    for (let i = 0; i < n.length; i++) norm.push(n[i]);
+    for (let i = 0; i < u.length; i++) uv.push(u[i]);
+    const count = p.length / 3;
+    for (let i = 0; i < count; i++) idx.push(offset + i);
+    offset += count;
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  merged.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+  merged.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  merged.setIndex(idx);
+  return merged;
+}
+
+/** 远端涂鸦墙 */
+function buildWall(): THREE.Group {
+  const group = new THREE.Group();
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a3442, roughness: 0.95 });
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(46, 5, 0.7), wallMat);
+  wall.position.set(0, 2.5, 63);
+  group.add(wall);
+
+  // 涂鸦贴图
+  const W = 1024;
+  const H = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#3a3442';
+  ctx.fillRect(0, 0, W, H);
+
+  // 喷漆色块
+  const rnd = (() => {
+    let a = 99;
+    return () => {
+      a = (a * 1103515245 + 12345) >>> 0;
+      return a / 4294967296;
+    };
+  })();
+  for (let i = 0; i < 60; i++) {
+    ctx.globalAlpha = 0.12 + rnd() * 0.2;
+    ctx.fillStyle = ['#ff4f7b', '#ffb03a', '#3ad1c8', '#8a5cff'][Math.floor(rnd() * 4)];
+    ctx.beginPath();
+    ctx.ellipse(rnd() * W, rnd() * H, 20 + rnd() * 60, 10 + rnd() * 30, rnd() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '900 74px system-ui, "Arial Black", sans-serif';
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = '#120f18';
+  ctx.strokeText('FLAG BOWL', W / 2, H / 2);
+  const grad = ctx.createLinearGradient(W * 0.25, 0, W * 0.75, H);
+  grad.addColorStop(0, '#ffd166');
+  grad.addColorStop(0.5, '#ff7b54');
+  grad.addColorStop(1, '#ff4f7b');
+  ctx.fillStyle = grad;
+  ctx.fillText('FLAG BOWL', W / 2, H / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mural = new THREE.Mesh(
+    new THREE.PlaneGeometry(44, 4.2),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, emissive: 0x1a0f18, emissiveIntensity: 0.6 }),
+  );
+  mural.position.set(0, 2.7, 62.6);
+  mural.rotation.y = Math.PI;
+  group.add(mural);
+  return group;
+}
+
+/** 灯杆 + 暖色灯头 + 光晕 */
+function buildLightPoles(): THREE.Group {
+  const group = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2e2a36, metalness: 0.55, roughness: 0.5 });
+  const lampMat = new THREE.MeshStandardMaterial({
+    color: 0x201a1a,
+    emissive: 0xffc98a,
+    emissiveIntensity: 2.2,
+    roughness: 0.4,
+  });
+
+  // 光晕贴图
+  const S = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, 'rgba(255, 214, 160, 0.95)');
+  g.addColorStop(0.35, 'rgba(255, 170, 110, 0.35)');
+  g.addColorStop(1, 'rgba(255, 150, 90, 0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  const glowTex = new THREE.CanvasTexture(canvas);
+  const glowMat = new THREE.SpriteMaterial({
+    map: glowTex,
+    color: 0xffd0a0,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    opacity: 0.75,
+  });
+
+  const H = 19;
+  for (const [x, z] of [
+    [-19.5, -8],
+    [19.5, -8],
+    [-19.5, 59],
+    [19.5, 59],
+  ]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, H, 8), poleMat);
+    pole.position.set(x, H / 2, z);
+    group.add(pole);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 0.18), poleMat);
+    arm.position.set(x + (x < 0 ? 1.4 : -1.4), H - 0.2, z);
+    group.add(arm);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.35, 0.9), lampMat);
+    head.position.set(x + (x < 0 ? 2.6 : -2.6), H - 0.45, z);
+    group.add(head);
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.setScalar(7);
+    glow.position.copy(head.position);
+    group.add(glow);
+  }
+  return group;
+}
+
+/** 街边道具：路障 + 长椅 */
+function buildProps(): THREE.Group {
+  const group = new THREE.Group();
+  const coneMat = new THREE.MeshStandardMaterial({ color: 0xff6a2a, roughness: 0.7 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.7 });
+  for (const [x, z] of [
+    [-15.2, -6],
+    [15.2, -6],
+    [-15.2, 10],
+    [15.2, 36],
+    [-15.2, 44],
+  ]) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1, 10), coneMat);
+    cone.position.set(x, 0.5, z);
+    group.add(cone);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.18, 10), whiteMat);
+    band.position.set(x, 0.62, z);
+    group.add(band);
+  }
+
+  // 远端长椅
+  const benchMat = new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.9 });
+  for (const side of [-1, 1]) {
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(6, 0.18, 0.9), benchMat);
+    bench.position.set(side * 22, 0.55, 62);
+    group.add(bench);
+    for (const dx of [-2.4, 2.4]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.8), benchMat);
+      leg.position.set(side * 22 + dx, 0.28, 62);
+      group.add(leg);
+    }
+  }
+  return group;
+}
+
+/** 街球场外景总装 */
 export function buildStadium(): THREE.Group {
   const group = new THREE.Group();
-  group.name = 'procedural-stadium';
-  group.add(buildStands().group);
-  group.add(buildScoreboard());
+  group.name = 'street-stadium';
+  group.add(buildFence());
+  group.add(buildCity());
+  group.add(buildWall());
+  group.add(buildLightPoles());
+  group.add(buildProps());
   return group;
 }
 
@@ -210,7 +356,7 @@ const loader = new GLTFLoader();
 
 /**
  * 外部体育场模型（可选）：按包围盒缩放到指定宽度，底面贴地，球场中心对齐。
- * 仅在模型本身是「开放式碗形」时使用；封闭式场馆会挡住相机，请改用 buildStadium()。
+ * 仅当模型本身是「开放式」时使用；封闭式场馆会挡住相机，请用 buildStadium()。
  */
 export async function loadStadium(scene: THREE.Scene, url: string, targetWidth = 150): Promise<THREE.Group | null> {
   try {
@@ -238,7 +384,7 @@ export async function loadStadium(scene: THREE.Scene, url: string, targetWidth =
 }
 
 /**
- * 头盔模型：缩放至头围约 0.62yd、朝向 +z（球员正面），返回可 clone 的模板。
+ * 头盔模型：缩放至头围约 0.36yd、朝向 +z（球员正面），返回可 clone 的模板。
  * 失败返回 null，调用方保留几何头盔。
  */
 export async function loadHelmet(url = './models/helmet.glb'): Promise<THREE.Object3D | null> {

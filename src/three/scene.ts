@@ -301,57 +301,116 @@ function makeBall(): THREE.Object3D {
   return group;
 }
 
-/** 天空：低分辨率竖向渐变 + 星点，贴在大球内壁 */
-function makeSky(): THREE.Mesh {
-  const W = 64;
-  const H = 512;
+/** 柏油/水泥地面纹理：细颗粒 + 裂缝 + 边线漆 */
+function makeAsphaltTexture(): THREE.CanvasTexture {
+  const S = 512;
   const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = S;
+  canvas.height = S;
   const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#05070f');
-  grad.addColorStop(0.55, '#0c1526');
-  grad.addColorStop(0.82, '#1c2c4a');
-  grad.addColorStop(1, '#33445f');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#2b2732';
+  ctx.fillRect(0, 0, S, S);
 
-  const rnd = mulberry32(7);
-  for (let i = 0; i < 160; i++) {
-    const x = Math.floor(rnd() * W);
-    const y = Math.floor(rnd() * H * 0.55);
-    const a = 0.2 + rnd() * 0.6;
-    ctx.fillStyle = `rgba(220, 232, 255, ${a.toFixed(2)})`;
-    ctx.fillRect(x, y, 1, 1);
+  const rnd = mulberry32(4242);
+  for (let i = 0; i < 9000; i++) {
+    const v = 30 + Math.floor(rnd() * 40);
+    ctx.fillStyle = `rgba(${v}, ${v - 2}, ${v + 4}, ${0.25 + rnd() * 0.35})`;
+    ctx.fillRect(rnd() * S, rnd() * S, 2, 2);
+  }
+  // 几道裂缝
+  ctx.strokeStyle = 'rgba(12, 10, 16, 0.55)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 7; i++) {
+    let x = rnd() * S;
+    let y = rnd() * S;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for (let k = 0; k < 6; k++) {
+      x += (rnd() - 0.5) * 60;
+      y += (rnd() - 0.5) * 60;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
   }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(320, 24, 16),
-    new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }),
-  );
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(6, 10);
+  tex.anisotropy = 8;
+  return tex;
+}
+export const SUN_DIR = new THREE.Vector3(0.3, 0.3, 1).normalize();
+
+/**
+ * 天空：自定义着色器（天顶深紫 → 品红 → 地平线暖橙）+ 太阳光晕 + 日轮。
+ * 比贴图更平滑，也不会有接缝。
+ */
+function makeSky(): THREE.Mesh {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      topColor: { value: new THREE.Color(0x1b0f38) },
+      midColor: { value: new THREE.Color(0x7a2b60) },
+      horizonColor: { value: new THREE.Color(0xff9166) },
+      groundColor: { value: new THREE.Color(0x2a1830) },
+      sunDir: { value: SUN_DIR.clone() },
+      sunColor: { value: new THREE.Color(0xffd2a0) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 topColor, midColor, horizonColor, groundColor, sunColor;
+      uniform vec3 sunDir;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 col;
+        if (h >= 0.0) {
+          col = mix(horizonColor, midColor, smoothstep(0.0, 0.32, h));
+          col = mix(col, topColor, smoothstep(0.22, 0.85, h));
+        } else {
+          col = mix(horizonColor, groundColor, smoothstep(0.0, -0.12, -h));
+        }
+        float s = max(dot(d, normalize(sunDir)), 0.0);
+        col += sunColor * pow(s, 10.0) * 0.28;   // 大范围晚霞
+        col += sunColor * pow(s, 220.0) * 0.9;   // 近太阳的光晕
+        col += sunColor * smoothstep(0.99955, 0.99985, s) * 1.6; // 日轮
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(400, 40, 24), mat);
   sky.position.set(0, 0, FIELD_LENGTH / 2);
   sky.renderOrder = -1;
   return sky;
 }
 
 /**
- * 构建球场场景：天空 + 草皮 + 灯光 + 开放看台 + QB/WR + 球。
+ * 构建球场场景：黄昏天空 + 草皮 + 街球外景 + QB/WR + 球。
  * 世界坐标：1 unit = 1 yd；x 横向，z 纵深（0=开球线，正=进攻方向），y 向上。
  */
 export function buildScene(): FieldObjects {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x070b14);
-  scene.fog = new THREE.Fog(0x111a2b, 120, 300);
+  scene.background = new THREE.Color(0x2a1430);
+  scene.fog = new THREE.Fog(0x8a4a5a, 150, 360);
 
   scene.add(makeSky());
 
-  // 场地外围：暗色地面 + 一圈草皮缓冲带，避免场地边缘露出虚空
+  // 场地外围：深色柏油 + 混凝土缓冲区，街球场的质感
   const outer = new THREE.Mesh(
     new THREE.PlaneGeometry(420, 420),
-    new THREE.MeshStandardMaterial({ color: 0x0d1421, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x1c1722, roughness: 1 }),
   );
   outer.rotation.x = -Math.PI / 2;
   outer.position.set(0, -0.08, FIELD_LENGTH / 2);
@@ -359,11 +418,25 @@ export function buildScene(): FieldObjects {
 
   const apron = new THREE.Mesh(
     new THREE.PlaneGeometry(FIELD_WIDTH + 33, FIELD_TOTAL_LENGTH + 33),
-    new THREE.MeshStandardMaterial({ color: 0x1b4423, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.96, metalness: 0 }),
   );
   apron.rotation.x = -Math.PI / 2;
   apron.position.set(0, -0.04, FIELD_LENGTH / 2);
   scene.add(apron);
+
+  // 场边黄线（街球场常见的团队区标线）
+  const paint = new THREE.MeshStandardMaterial({
+    color: 0xd9b45a,
+    roughness: 0.8,
+    emissive: 0x241a08,
+    emissiveIntensity: 0.4,
+  });
+  for (const side of [-1, 1]) {
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.22, FIELD_TOTAL_LENGTH + 8), paint);
+    line.rotation.x = -Math.PI / 2;
+    line.position.set(side * (FIELD_WIDTH / 2 + 2.4), 0.005, FIELD_LENGTH / 2);
+    scene.add(line);
+  }
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_TOTAL_LENGTH),
@@ -374,24 +447,33 @@ export function buildScene(): FieldObjects {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  scene.add(new THREE.HemisphereLight(0xc3d8ff, 0x1d3a22, 1.25));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
-  const sun = new THREE.DirectionalLight(0xfff2dc, 2.4);
-  sun.position.set(24, 46, -18);
+  // 黄昏光照：低角度暖色太阳 + 品红环境光 + 冷色补光
+  scene.add(new THREE.HemisphereLight(0xffc6a8, 0x3a2c3a, 1.1));
+  scene.add(new THREE.AmbientLight(0x6a4a62, 0.55));
+  const sun = new THREE.DirectionalLight(0xffb07a, 3.4);
+  sun.position.copy(SUN_DIR).multiplyScalar(140);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -40;
-  sun.shadow.camera.right = 40;
-  sun.shadow.camera.top = 60;
-  sun.shadow.camera.bottom = -20;
-  sun.shadow.camera.far = 160;
-  sun.shadow.bias = -0.0008;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -55;
+  sun.shadow.camera.right = 55;
+  sun.shadow.camera.top = 80;
+  sun.shadow.camera.bottom = -40;
+  sun.shadow.camera.far = 420;
+  sun.shadow.bias = -0.0006;
   scene.add(sun);
 
-  // 远端补光，让球员与看台不糊成一片黑
-  const fill = new THREE.DirectionalLight(0x9dbcf0, 0.55);
-  fill.position.set(-30, 26, 80);
+  // 相机侧冷色补光，避免球员正面死黑
+  const fill = new THREE.DirectionalLight(0x9a7ad0, 1.4);
+  fill.position.set(-30, 24, -50);
   scene.add(fill);
+
+  // 近场补光：把 QB 和近端草皮从逆光里提出来
+  const nearKey = new THREE.PointLight(0xffb488, 90, 70, 2);
+  nearKey.position.set(0, 10, -2);
+  scene.add(nearKey);
+  const midKey = new THREE.PointLight(0xffc49a, 60, 80, 2);
+  midKey.position.set(0, 12, 30);
+  scene.add(midKey);
 
   // QB（主场深蓝）位于开球线后 3yd；WR（客场白）位于开球线右侧
   const qb = makePlayer(0x1a3a8f, 0xc68e5f);
