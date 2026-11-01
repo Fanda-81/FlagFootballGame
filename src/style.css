@@ -9,6 +9,9 @@
   --text-dim: #9fb0cc;
   --good: #43d17c;
   --bad: #e0544a;
+  --glass: rgba(14, 20, 36, 0.52);
+  --glass-strong: rgba(12, 17, 30, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.16);
   --card-w: 168px;
   --card-h: 116px;
 }
@@ -35,53 +38,149 @@ body {
 }
 
 #app {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  height: 100dvh;
-  grid-template-areas:
-    'hud hud hud'
-    'left stage right'
-    'playcall playcall playcall';
-  grid-template-rows: calc(52px + env(safe-area-inset-top, 0px)) 1fr auto;
-  grid-template-columns: 72px 1fr 72px;
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
-  box-sizing: border-box;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
 }
 
-/* ============ HUD ============ */
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* 叠在画布上的提示层（不拦截点击） */
+#stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ============ 顶部 HUD（毛玻璃） ============ */
 #hud {
-  grid-area: hud;
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  left: 10px;
+  right: 10px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px 0 8px;
+  border-radius: 16px;
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28);
+  z-index: 10;
+}
+
+.profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  cursor: pointer;
+  max-width: 34vw;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.profile-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--glass-border);
+}
+
+.prof-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 28px;
-  padding-top: env(safe-area-inset-top, 0px);
-  background: var(--panel);
-  border-bottom: 1px solid var(--panel-border);
-  z-index: 5;
-  position: relative;
+  font-size: 20px;
+  background: var(--accent);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  flex: 0 0 auto;
 }
 
-.hud-brand {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  font-weight: 900;
+.prof-name {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-stats {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 54px;
+}
+
+.hud-label {
+  font-size: 10px;
+  color: var(--text-dim);
   letter-spacing: 2px;
-  color: var(--accent-hot);
-  opacity: 0.9;
+}
+
+.hud-value {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wallet-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-item .wi-icon {
+  font-size: 14px;
+}
+
+.wallet-item.diamond b {
+  color: #7fd4ff;
+}
+.wallet-item.coin b {
+  color: #ffd166;
 }
 
 #net-badge {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 3px 10px;
+  position: static;
+  padding: 4px 9px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
@@ -89,6 +188,7 @@ body {
   color: #ffd9a8;
   background: rgba(120, 60, 10, 0.55);
   border: 1px solid rgba(255, 179, 0, 0.5);
+  white-space: nowrap;
 }
 
 .set-value {
@@ -125,12 +225,7 @@ body {
 }
 
 /* ============ 中央舞台 ============ */
-#stage {
-  grid-area: stage;
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-}
+/* 覆盖层：保持全屏绝对定位（旧的网格规则已移除） */
 
 #game-canvas {
   display: block;
@@ -142,7 +237,7 @@ body {
 #throw-hint {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  bottom: 122px;
   transform: translateX(-50%);
   display: flex;
   gap: 16px;
@@ -211,23 +306,30 @@ body {
 /* ============ 左右功能按钮 ============ */
 #side-left,
 #side-right {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
-  background: var(--panel);
-  z-index: 5;
+  padding: 10px 8px;
+  border-radius: 18px;
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.25);
+  z-index: 10;
 }
 
 #side-left {
-  grid-area: left;
-  border-right: 1px solid var(--panel-border);
+  left: max(10px, env(safe-area-inset-left, 0px));
 }
 
 #side-right {
-  grid-area: right;
-  border-left: 1px solid var(--panel-border);
+  right: max(10px, env(safe-area-inset-right, 0px));
 }
 
 .side-btn {
@@ -258,12 +360,19 @@ body {
 
 /* ============ 底部战术列表（Madden 风格） ============ */
 #playcall {
-  grid-area: playcall;
-  background: var(--panel);
-  border-top: 1px solid var(--panel-border);
+  position: absolute;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(780px, 94vw);
   padding: 10px 12px;
-  z-index: 5;
-  position: relative;
+  border-radius: 20px;
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  z-index: 10;
 }
 
 /* ACTION MENU：底部居中三按钮 */
@@ -653,8 +762,8 @@ body {
 /* ============ 结果消息（抖音评论区风格） ============ */
 #comment-feed {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: 132px;
+  bottom: 122px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -926,16 +1035,42 @@ body {
 /* ============ 手机 / 小屏适配 ============ */
 @media (max-width: 900px) {
   #hud {
-    gap: 18px;
+    gap: 8px;
+    height: 48px;
+    padding: 0 8px;
+    border-radius: 14px;
   }
-  .hud-brand {
-    display: none;
+  .prof-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 17px;
+  }
+  .prof-name {
+    font-size: 12px;
+    max-width: 18vw;
+  }
+  .hud-stats {
+    gap: 10px;
+  }
+  .hud-item {
+    min-width: 42px;
+  }
+  .hud-label {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  .hud-value {
+    font-size: 17px;
+  }
+  .wallet-item {
+    padding: 4px 8px;
+    font-size: 12px;
   }
   #action-menu {
     gap: 8px;
   }
   .action-btn {
-    height: 82px;
+    height: 78px;
     max-width: none;
   }
   .action-btn .ab-icon {
@@ -955,33 +1090,44 @@ body {
 }
 
 @media (max-height: 520px) {
-  #app {
-    grid-template-rows: calc(40px + env(safe-area-inset-top, 0px)) 1fr auto;
+  #hud {
+    height: 42px;
+    top: max(6px, env(safe-area-inset-top, 0px));
+  }
+  .prof-name {
+    display: none;
+  }
+  .prof-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 16px;
   }
   .hud-value {
-    font-size: 18px;
+    font-size: 16px;
   }
   .hud-label {
-    font-size: 10px;
-  }
-  #side-left,
-  #side-right {
-    gap: 8px;
+    font-size: 9px;
   }
   .side-btn {
-    width: 46px;
-    height: 44px;
-    font-size: 17px;
+    width: 44px;
+    height: 42px;
+    font-size: 16px;
     border-radius: 10px;
   }
   .side-btn span {
     display: none;
   }
+  #side-left,
+  #side-right {
+    gap: 8px;
+    padding: 8px 6px;
+  }
   #playcall {
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 8px;
+    bottom: max(6px, env(safe-area-inset-bottom, 0px));
   }
   .action-btn {
-    height: 62px;
+    height: 58px;
     gap: 0;
   }
   .action-btn .ab-sub {
@@ -991,37 +1137,229 @@ body {
     --card-w: 140px;
     --card-h: 96px;
   }
+  #comment-feed {
+    bottom: 96px;
+    right: 118px;
+  }
+  #throw-hint {
+    bottom: 96px;
+  }
   #update-toast {
-    bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }
 
-@media (orientation: portrait) {
-  #app {
-    grid-template-columns: 48px 1fr 48px;
+/* 竖屏锁定：只支持横屏 */
+#portrait-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 18, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.pl-card {
+  text-align: center;
+  padding: 26px 34px;
+  border-radius: 22px;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+}
+
+.pl-icon {
+  font-size: 54px;
+  line-height: 1;
+  margin-bottom: 12px;
+  animation: pl-tilt 1.8s ease-in-out infinite;
+}
+
+.pl-card p {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.pl-card span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+@keyframes pl-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg);
   }
-  .side-btn {
-    width: 40px;
-    height: 46px;
-    font-size: 18px;
+  50% {
+    transform: rotate(90deg);
   }
-  .side-btn span {
-    display: none;
-  }
-  #playcall {
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  }
-  .action-btn .ab-title {
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-  }
-  .action-btn .ab-sub {
-    font-size: 9px;
-  }
-  #playcard-pop {
-    max-width: 94vw;
-  }
+}
+
+/* ============ 个人资料 ============ */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.profile-head .prof-avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 30px;
+}
+
+.profile-head .profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-head .profile-meta b {
+  font-size: 18px;
+}
+
+.profile-head .profile-meta span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.field-label {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.name-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+}
+
+.name-input:focus {
+  border-color: var(--accent);
+}
+
+.avatar-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avatar-opt {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-opt.selected {
+  border-color: var(--accent-hot);
+  box-shadow: 0 0 12px rgba(255, 179, 0, 0.4);
+}
+
+.color-grid {
+  display: flex;
+  gap: 8px;
+}
+
+.color-opt {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.color-opt.selected {
+  border-color: #fff;
+}
+
+/* ============ 商城 ============ */
+.shop-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+}
+
+.shop-item .si-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.shop-item .si-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-item .si-name {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.shop-item .si-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.shop-item .si-buy {
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: none;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  background: linear-gradient(180deg, #3a8bff, #2f7fe0);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.shop-item .si-buy[disabled] {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.shop-item .si-price {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffd166;
+}
+
+.shop-item.owned {
+  opacity: 0.62;
 }
 
 @media (prefers-reduced-motion: reduce) {

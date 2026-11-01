@@ -1,12 +1,10 @@
 import * as THREE from 'three';
-import { FIELD_MID_Z } from './dimensions';
 
 /**
- * Madden 式纵向视角 + 缩放 + 双指横移视角。
- * zoom -0.5..1：0 = 默认，负值 = 光学放大（收窄 FOV），1 = 最远。
- * yaw：左右平移视角（弧度，约 ±16°）。
- *
- * 相机走廊：z ∈ [-35, -14]、y ∈ [6.5, 21]；外景必须避开这条走廊。
+ * 以四分卫为焦点的第三人称视角。
+ * - 焦点固定在 QB 胸口，缩放时 QB 始终位于画面中央附近，脚部不会被裁掉
+ * - zoom -0.5..1：负值 = 拉近（相机更低更近），1 = 拉远
+ * - yaw：绕 QB 左右平移视角
  */
 export interface CameraRig {
   camera: THREE.PerspectiveCamera;
@@ -18,23 +16,25 @@ export interface CameraRig {
 
 export const MIN_ZOOM = -0.5;
 export const MAX_ZOOM = 1;
-export const MAX_YAW = 0.28;
+export const MAX_YAW = 0.3;
 
-/** 相机在各缩放档位的位置（供外景避让 / 自动化校验使用） */
+/** 镜头看的点：QB 身前 4 码的胸口高度（既框住 QB，又能看到前方球场） */
+export const LOOK_TARGET = new THREE.Vector3(0, 1.2, 1);
+
+/** 相机位置：以 QB 为圆心 */
 export function cameraPose(zoom: number): THREE.Vector3 {
-  const z = Math.min(1, Math.max(0, zoom));
-  const dist = 14 + z * 21; // 14 ~ 35
-  const height = 6.5 + z * 14.5; // 6.5 ~ 21
-  return new THREE.Vector3(0, height, -dist);
+  const t = Math.min(1, Math.max(MIN_ZOOM, zoom)) + 0.5; // 0..1.5
+  const dist = 7 + t * 14; // 7 ~ 28
+  const height = 2.2 + t * 6.0; // 2.2 ~ 8.2
+  return new THREE.Vector3(0, height, -3 - dist);
 }
 
 export function createCamera(): CameraRig {
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 900);
-  const lookTarget = new THREE.Vector3(0, 1.2, FIELD_MID_Z);
 
   const rig: CameraRig = {
     camera,
-    zoom: 0.4,
+    zoom: 0,
     yaw: 0,
     setZoom(z: number) {
       rig.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
@@ -47,17 +47,11 @@ export function createCamera(): CameraRig {
   };
 
   function apply(): void {
-    // 负 zoom 用收窄 FOV 实现「放大倍数」，不移动相机，避免球员出画
-    const fov = rig.zoom < 0 ? 50 + rig.zoom * 26 : 50;
-    if (camera.fov !== fov) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
-    const pose = cameraPose(Math.max(0, rig.zoom));
-    const offset = pose.clone().sub(lookTarget);
+    const pose = cameraPose(rig.zoom);
+    const offset = pose.clone().sub(LOOK_TARGET);
     offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), rig.yaw);
-    camera.position.copy(lookTarget).add(offset);
-    camera.lookAt(lookTarget);
+    camera.position.copy(LOOK_TARGET).add(offset);
+    camera.lookAt(LOOK_TARGET);
   }
   apply();
   return rig;
@@ -71,7 +65,7 @@ export function attachZoom(canvas: HTMLElement, rig: CameraRig): void {
     'wheel',
     (e) => {
       e.preventDefault();
-      rig.setZoom(rig.zoom + (e.deltaY > 0 ? 0.07 : -0.07));
+      rig.setZoom(rig.zoom + (e.deltaY > 0 ? 0.06 : -0.06));
     },
     { passive: false },
   );
@@ -109,7 +103,6 @@ export function attachZoom(canvas: HTMLElement, rig: CameraRig): void {
     const m = mids();
     if (!m.dist) return;
 
-    // 先判定手势类型，一旦确定就锁定，避免边缩放边漂移
     if (mode === 'none') {
       const dDist = Math.abs(m.dist - pinchBase);
       const dMid = Math.abs(m.mid - midBase);

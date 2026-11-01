@@ -9,34 +9,49 @@
     <meta name="theme-color" content="#0b3d1f" />
     <meta
       name="description"
-      content="腰旗橄榄球传球训练：Madden 风格战术卡片 + 3D 球场，轻点高球、长按平快球，手机电脑都能玩。"
+      content="FFSIMU 腰旗橄榄球传球训练：黄昏街球场、真实球员动作、手机横屏即开即玩。"
     />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="FF Pass" />
+    <meta name="apple-mobile-web-app-title" content="FFSIMU" />
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>FFSimu — 腰旗橄榄球传球训练</title>
   </head>
   <body>
     <div id="app">
-      <!-- 顶部 HUD -->
+      <!-- 全屏 3D 画布 -->
+      <canvas id="game-canvas" aria-label="3D 球场"></canvas>
+
+      <!-- 顶部：个人资料 + 战绩 + 资产 -->
       <header id="hud">
-        <div class="hud-brand">🏈 FFSIMU</div>
+        <button class="profile-chip" id="profile-chip" aria-label="个人信息">
+          <span class="prof-avatar" id="hud-avatar">🏈</span>
+          <span class="prof-name" id="hud-name">新秀球员</span>
+        </button>
+
+        <div class="hud-stats">
+          <div class="hud-item">
+            <span class="hud-label">连击</span>
+            <span id="hud-combo" class="hud-value">0</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-label">尝试</span>
+            <span id="hud-attempts" class="hud-value">0</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-label">成功率</span>
+            <span id="hud-rate" class="hud-value">—</span>
+          </div>
+        </div>
+
+        <div class="wallet" id="wallet">
+          <span class="wallet-item diamond"><span class="wi-icon">💎</span><b id="hud-diamonds">100</b></span>
+          <span class="wallet-item coin"><span class="wi-icon">🪙</span><b id="hud-coins">20,000</b></span>
+        </div>
+
         <div id="net-badge" class="hidden">📴 离线</div>
-        <div class="hud-item">
-          <span class="hud-label">连击</span>
-          <span id="hud-combo" class="hud-value">0</span>
-        </div>
-        <div class="hud-item">
-          <span class="hud-label">尝试</span>
-          <span id="hud-attempts" class="hud-value">0</span>
-        </div>
-        <div class="hud-item">
-          <span class="hud-label">成功率</span>
-          <span id="hud-rate" class="hud-value">—</span>
-        </div>
       </header>
 
       <!-- 左侧功能按钮 -->
@@ -46,24 +61,6 @@
         <button class="side-btn" id="btn-playbook" title="战术手册">📖<span>战术本</span></button>
       </aside>
 
-      <!-- 中央 3D 球场 -->
-      <main id="stage">
-        <canvas id="game-canvas" aria-label="3D 球场"></canvas>
-        <div id="throw-hint" class="hidden">
-          <div class="hint-line">👆 <b>轻点</b> QB = 高球 Lob</div>
-          <div class="hint-line">✊ <b>长按</b> QB = 平快球 Bullet</div>
-        </div>
-        <div id="result-banner" class="hidden"></div>
-        <!-- 抖音评论区风格的结果消息 -->
-        <div id="comment-feed" aria-live="polite"></div>
-
-        <!-- 竖屏友好提示：不阻断操作 -->
-        <div id="rotate-hint" class="hidden">
-          <span>📱 横屏体验更佳</span>
-          <button id="rotate-dismiss" aria-label="关闭提示">知道了</button>
-        </div>
-      </main>
-
       <!-- 右侧功能按钮 -->
       <aside id="side-right">
         <button class="side-btn hidden" id="btn-install" title="安装到桌面">📲<span>安装</span></button>
@@ -71,6 +68,15 @@
         <button class="side-btn" id="btn-shop" title="商城">🛒<span>商城</span></button>
         <button class="side-btn" id="btn-settings" title="设置">⚙️<span>设置</span></button>
       </aside>
+
+      <!-- 叠在画面上的提示 / 评论区 -->
+      <main id="stage">
+        <div id="throw-hint" class="hidden">
+          <div class="hint-line">👆 <b>轻点</b> QB = 高球 Lob</div>
+          <div class="hint-line">✊ <b>长按</b> QB = 平快球 Bullet</div>
+        </div>
+        <div id="comment-feed" aria-live="polite"></div>
+      </main>
 
       <!-- 底部战术列表 -->
       <footer id="playcall">
@@ -90,6 +96,15 @@
 
       <!-- 轻量提示 -->
       <div id="toast" class="hidden"></div>
+
+      <!-- 竖屏锁定（本游戏只支持横屏） -->
+      <div id="portrait-lock" class="hidden">
+        <div class="pl-card">
+          <div class="pl-icon">📱↻</div>
+          <p>请把设备旋转到<b>横屏</b></p>
+          <span>FFSIMU 只支持横屏游玩</span>
+        </div>
+      </div>
 
       <!-- 启动加载层 -->
       <div id="boot">

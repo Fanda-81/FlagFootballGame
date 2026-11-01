@@ -17,6 +17,8 @@ import { PLAYS } from './data/plays';
 import { attachGesture } from './ui/gestures';
 import { renderActionMenu } from './ui/playCall';
 import { bindSideButtons, openChangelog } from './ui/sideButtons';
+import { openProfile, renderProfileChip, renderWallet } from './ui/profile';
+import { initAudio, playCatch, playCheer, playMiss, playPass, setVolume } from './audio';
 import { loadSettings, saveSettings } from './data/storage';
 import { ANIMS_URL, HELMET_MODEL_URL, PLAYER_MODEL_URL, QB_MODEL_URL } from './config';
 import type { PlayerModelAsset } from './three/stadium';
@@ -50,8 +52,7 @@ function main(): void {
   const hudAttempts = el('hud-attempts');
   const hudRate = el('hud-rate');
   const throwHint = el('throw-hint');
-  const resultBanner = el('result-banner');
-  const rotateHint = el('rotate-hint');
+  const rotateHint = el('portrait-lock');
   const playcallList = el('playcall-list');
   const stage = el('stage');
   const btnGame = el('btn-game');
@@ -112,6 +113,8 @@ function main(): void {
   const rigAnims = new Map<PlayerRig, RigAnim>();
   let animClips: THREE.AnimationClip[] = [];
   let handBall: THREE.Mesh | null = null;
+  let wrHandBone: THREE.Object3D | null = null;
+  const tmpVec = new THREE.Vector3();
 
   const clipsReady = loadAnimationClips(ANIMS_URL).then((clips) => {
     animClips = clips;
@@ -176,6 +179,14 @@ function main(): void {
       attachHandBall(clone);
     } else {
       playClip(rig, 'Idle');
+      if (rig === wr) {
+        // 接住后把球吸附到外接手右手
+        clone.traverse((n) => {
+          if (wrHandBone) return;
+          const name = n.name.toLowerCase().replace(/[^a-z]/g, '');
+          if (name.endsWith('righthand')) wrHandBone = n;
+        });
+      }
     }
   }
 
@@ -364,9 +375,18 @@ function main(): void {
     if (handBall) handBall.visible = false;
     ball.visible = true;
     setTimeout(() => {
-      playClip(qb, 'Pass', { time: 4.05, paused: true, fade: 0.25 });
+      // 投完平滑回到待机，避免姿势硬切造成「断续」
+      playClip(qb, 'Idle', { fade: 0.45 });
       if (handBall) handBall.visible = true;
     }, 2450);
+  }
+
+  /** 角度插值：让转身是连续的，而不是瞬间跳转 */
+  function smoothAngle(current: number, target: number, t: number): number {
+    let diff = target - current;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return current + diff * Math.min(1, t);
   }
 
   const controller = new GameController({
@@ -379,7 +399,6 @@ function main(): void {
     },
     onSnap: (play) => {
       playCall.setSelected(play.id);
-      resultBanner.classList.add('hidden');
       catchTriggered = false;
       wrCatch = false;
       postCatch.t = 0;
@@ -393,6 +412,12 @@ function main(): void {
       if (result.code === 'complete') totalComplete += 1;
       const c = commentFor(result.code, dynamic);
       pushComment(c.text, c.tone);
+      if (result.code === 'complete') {
+        playCatch();
+        if (dynamic) playCheer();
+      } else {
+        playMiss();
+      }
       wrCatch = false;
       if (result.code === 'complete') startPostCatch();
       else startBallBounce(result);
@@ -424,13 +449,13 @@ function main(): void {
       for (const d of defenders) scene.remove(d.group);
       defenders.length = 0;
     }
-    resultBanner.classList.add('hidden');
   });
 
   // ---- 手势：轻点 = 高球 lob，长按 = 平快球 bullet ----
   function doThrow(type: ThrowType): void {
     if (controller.state !== GameState.ROUTE) return;
     controller.throwBall(type);
+    playPass();
     const r = controller.lastResult;
     // 小概率脱手：判断为接住但手滑，球会弹地
     if (r && r.code === 'complete' && Math.random() < 0.12) r.code = 'drop';
@@ -481,7 +506,8 @@ function main(): void {
     } else if (d && state !== GameState.RESULT && state !== GameState.RESOLVE) {
       wr.group.position.set(d.runner.pos.x, 0, d.runner.pos.z);
       if (moving) {
-        wr.group.rotation.y = Math.atan2(d.runner.vel.x, d.runner.vel.z);
+        const targetYaw = Math.atan2(d.runner.vel.x, d.runner.vel.z);
+        wr.group.rotation.y = smoothAngle(wr.group.rotation.y, targetYaw, dt * 9);
         runPhase += dt * 10;
         if (!rigAnims.has(wr)) animateRig(wr, runPhase, true);
         if (!wrCatch) playClip(wr, 'Run', { fade: 0.2 });
@@ -560,8 +586,13 @@ function main(): void {
         } else if (controller.lastResult) {
           const r = controller.lastResult;
           if (r.code === 'complete') {
-            // 球在怀里，跟着外接手继续推进
-            ball.position.set(wr.group.position.x, 1.45, wr.group.position.z + 0.15);
+            // 接住后球紧贴外接手右手
+            if (wrHandBone) {
+              wrHandBone.getWorldPosition(tmpVec);
+              ball.position.copy(tmpVec);
+            } else {
+              ball.position.set(wr.group.position.x, 1.45, wr.group.position.z + 0.15);
+            }
           } else {
             ball.position.set(r.landing.x, 0.3, r.landing.z);
           }
@@ -572,16 +603,22 @@ function main(): void {
   };
   handle.start();
 
-  // ---- 竖屏提示（不阻断操作，横屏仍是最佳体验）----
+  // ---- 只支持横屏：竖屏时锁定并提示 ----
   function syncOrientation(): void {
     const portrait = window.matchMedia('(orientation: portrait)').matches;
-    if (portrait) rotateHint.classList.remove('hidden');
-    else rotateHint.classList.add('hidden');
+    rotateHint.classList.toggle('hidden', !portrait);
+    if (!portrait) {
+      // 在 PWA / 全屏下尝试锁定横屏（iOS 不支持时静默失败）
+      try {
+        void (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape');
+      } catch {
+        /* ignore */
+      }
+    }
   }
   syncOrientation();
   window.addEventListener('orientationchange', syncOrientation);
   window.addEventListener('resize', syncOrientation);
-  el('rotate-dismiss').addEventListener('click', () => rotateHint.classList.add('hidden'));
 
   // ---- 设置应用 + 侧边按钮 ----
   const pwa = initPWA({
@@ -589,7 +626,13 @@ function main(): void {
     onOfflineReady: () => showToast('✅ 已缓存，可离线游玩'),
   });
 
-  handle.setQuality(loadSettings().quality);
+  const settings = loadSettings();
+  initAudio(settings.volume);
+  renderProfileChip();
+  renderWallet();
+  el('profile-chip').addEventListener('click', () => openProfile(() => renderProfileChip()));
+
+  handle.setQuality(settings.quality);
   handle.onQualityChange = (q) => saveSettings({ ...loadSettings(), quality: q });
   bindSideButtons({
     onQualityChange: (q) => handle.setQuality(q),
@@ -609,6 +652,8 @@ function main(): void {
       });
     },
     notify: showToast,
+    onWalletChange: renderWallet,
+    onVolumeChange: (v) => setVolume(v),
   });
 
   // ---- 更新提示 ----

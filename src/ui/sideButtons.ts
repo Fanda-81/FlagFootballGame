@@ -16,6 +16,8 @@ import {
 import { openModal } from './modals';
 import { routeSvg } from './playCall';
 import { CHANGELOG } from '../data/changelog';
+import { SHOP_ITEMS } from '../data/shop';
+import { loadWallet, saveWallet } from '../data/profile';
 
 /** 更新内容弹窗 */
 export function openChangelog(): void {
@@ -84,15 +86,58 @@ function openCards(): void {
   openModal(`球员卡（${cards.length}）`, body);
 }
 
-/** 商城骨架弹窗（MVP 占位） */
-function openShop(): void {
+/** 商城：本地扣费购买（交易系统上线前先本地记账） */
+function openShop(opts: { notify: (m: string) => void; onWalletChange: () => void }): void {
   const body = document.createElement('div');
   body.innerHTML = `
-    <div class="modal-row"><label>👕 个性化球衣</label><span style="color:var(--text-dim)">敬请期待</span></div>
-    <div class="modal-row"><label>🩳 装备配件</label><span style="color:var(--text-dim)">敬请期待</span></div>
-    <div class="modal-row"><label>🏟️ 球场主题</label><span style="color:var(--text-dim)">敬请期待</span></div>
-    <p style="color:var(--text-dim);font-size:12px">商城将在后续版本接入；当前可先在「抽卡」收集球员。</p>`;
+    <div class="shop-balance" id="shop-balance"></div>
+    <div class="shop-grid" id="shop-grid"></div>
+    <p style="color:var(--text-dim);font-size:12px;margin-top:12px">
+      购买立即扣费并保存在本机；交易系统上线后可跨设备同步。
+    </p>`;
   openModal('商城', body);
+  const grid = body.querySelector<HTMLElement>('#shop-grid')!;
+  const balance = body.querySelector<HTMLElement>('#shop-balance')!;
+
+  const draw = (): void => {
+    const w = loadWallet();
+    balance.innerHTML = `<span>💎 ${w.diamonds.toLocaleString('en-US')}</span><span>🪙 ${w.coins.toLocaleString('en-US')}</span>`;
+    grid.innerHTML = SHOP_ITEMS.map((it) => {
+      const owned = w.owned.includes(it.id);
+      const price = `${it.currency === 'coins' ? '🪙' : '💎'} ${it.price.toLocaleString('en-US')}`;
+      return `<div class="shop-item${owned ? ' owned' : ''}">
+        <span class="si-icon">${it.icon}</span>
+        <div class="si-info">
+          <div class="si-name">${it.name}</div>
+          <div class="si-desc">${it.desc}</div>
+        </div>
+        <span class="si-price">${price}</span>
+        <button class="si-buy" data-id="${it.id}"${owned ? ' disabled' : ''}>${owned ? '已拥有' : '购买'}</button>
+      </div>`;
+    }).join('');
+
+    grid.querySelectorAll<HTMLButtonElement>('.si-buy').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = SHOP_ITEMS.find((i) => i.id === btn.dataset.id);
+        if (!item) return;
+        const wallet = loadWallet();
+        if (wallet.owned.includes(item.id)) return;
+        const enough = item.currency === 'coins' ? wallet.coins >= item.price : wallet.diamonds >= item.price;
+        if (!enough) {
+          opts.notify(item.currency === 'coins' ? '金币不够，先打几档攒一攒' : '钻石不够');
+          return;
+        }
+        if (item.currency === 'coins') wallet.coins -= item.price;
+        else wallet.diamonds -= item.price;
+        wallet.owned.push(item.id);
+        saveWallet(wallet);
+        opts.onWalletChange();
+        draw();
+        opts.notify(`已购买：${item.name}`);
+      });
+    });
+  };
+  draw();
 }
 
 /** 设置弹窗：音量 / 画质 / 网络 / 离线包 / 安装 / 版本 / 重置 */
@@ -100,6 +145,7 @@ function openSettings(opts: {
   onQualityChange: (q: 'high' | 'low') => void;
   onCheckUpdate: () => void;
   notify: (msg: string) => void;
+  onVolumeChange: (v: number) => void;
 }): void {
   const s = loadSettings();
   const buildTime = new Date(__BUILD_TIME__).toLocaleString('zh-CN', { hour12: false });
@@ -155,6 +201,7 @@ function openSettings(opts: {
   volume.addEventListener('input', () => {
     volumeVal.textContent = `${Math.round(Number(volume.value) * 100)}%`;
     saveSettings({ ...loadSettings(), volume: Number(volume.value) });
+    opts.onVolumeChange(Number(volume.value));
   });
 
   quality.addEventListener('change', () => {
@@ -266,6 +313,10 @@ export interface SideButtonsOptions {
   onCheckUpdate: () => void;
   /** 轻提示（离线/下载等反馈） */
   notify: (msg: string) => void;
+  /** 钱包变化（购买后刷新顶部资产） */
+  onWalletChange: () => void;
+  /** 音量滑块变化 */
+  onVolumeChange: (v: number) => void;
 }
 
 /** 绑定左右功能按钮 */
@@ -284,7 +335,7 @@ export function bindSideButtons(opts: SideButtonsOptions): void {
       opts.notify('商城需要联网，离线时暂不可用');
       return;
     }
-    openShop();
+    openShop(opts);
   });
   bind('btn-settings', () => openSettings(opts));
 }
