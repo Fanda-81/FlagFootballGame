@@ -11,23 +11,28 @@ Madden 风格的腰旗橄榄球传球训练网页游戏（PWA）：选战术 →
 
 ## 1. 上线（让用户通过网页访问）
 
-### 方案 A：GitHub Pages（免费、自带 CI）
+### 方案 A：GitHub Pages（本仓库已按此配置，免费）
 
-1. 新建 GitHub 仓库，把本项目推上去：
+仓库地址：`https://github.com/Fanda-81/FlagFootballGame`
+
+1. **首次配置（只需做一次）**：仓库 **Settings → Pages → Build and deployment**
+   - Source 选 **Deploy from a branch**
+   - Branch 选 **gh-pages**，目录 **/ (root)**
+   - 保存后等 30~90 秒
+2. **每次发版**：
 
    ```bash
-   git init
-   git add .
-   git commit -m "feat: 可上线版本"
-   git branch -M main
-   git remote add origin https://github.com/<你的账号>/<仓库名>.git
-   git push -u origin main
+   npm run deploy      # 构建 dist/ 并强推 gh-pages 分支
    ```
 
-2. 仓库 **Settings → Pages → Build and deployment → Source 选 GitHub Actions**。
-3. 之后每次 `git push`，`.github/workflows/deploy.yml` 会自动跑 `typecheck → test → build` 并发布。
-4. 地址形如 `https://<账号>.github.io/<仓库名>/`，手机打开 → 浏览器菜单「添加到主屏幕」。
+3. 访问地址：`https://fanda-81.github.io/FlagFootballGame/`
 
+> 为什么不是 GitHub Actions？这台机器上保存的 GitHub 凭据只有 `repo` 权限，
+> 没有 `workflow` 权限，无法推送 `.github/workflows/` 下的文件。
+> 想升级成「push 即自动构建」：到 GitHub → Settings → Developer settings → Tokens
+> 重新授权一个带 `workflow` 权限的 token，然后把 `deploy/github-pages-actions.yml`
+> 复制回 `.github/workflows/deploy.yml`，Pages 源改成 **GitHub Actions** 即可。
+>
 > 私有仓库要发布 Pages 需要 GitHub Pro；公开仓库免费。
 > `vite.config.ts` 已设置 `base: './'`，放在子路径（`/仓库名/`）也能正常加载资源与 Service Worker。
 
@@ -51,7 +56,7 @@ Madden 风格的腰旗橄榄球传球训练网页游戏（PWA）：选战术 →
 
 ## 2. 迭代与「用户点一下就更新」
 
-发布流程就是 **改代码 → push**。CI 构建新版本并部署后：
+发布流程就是 **改代码 → `npm run deploy`**。新版本推上去后：
 
 1. 老用户下次打开页面时，Service Worker 检测到新版本 → 底部弹出 **「🚀 新版本已就绪 · 立即更新」**；
 2. 用户点一下 → 新版本激活并自动刷新（`vite-plugin-pwa` 的 `prompt` 模式）；
