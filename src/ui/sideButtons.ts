@@ -70,9 +70,13 @@ function openShop(): void {
   openModal('商城', body);
 }
 
-/** 设置弹窗：音量 / 画质 / 重置数据 */
-function openSettings(onQualityChange: (q: 'high' | 'low') => void): void {
+/** 设置弹窗：音量 / 画质 / 版本与更新 / 重置数据 */
+function openSettings(opts: {
+  onQualityChange: (q: 'high' | 'low') => void;
+  onCheckUpdate: () => void;
+}): void {
   const s = loadSettings();
+  const buildTime = new Date(__BUILD_TIME__).toLocaleString('zh-CN', { hour12: false });
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="modal-row"><label>🔊 音量</label>
@@ -83,9 +87,12 @@ function openSettings(onQualityChange: (q: 'high' | 'low') => void): void {
         <option value="high"${s.quality === 'high' ? ' selected' : ''}>高（设备分辨率）</option>
         <option value="low"${s.quality === 'low' ? ' selected' : ''}>低（省电）</option>
       </select></div>
+    <div class="modal-row"><label>🔄 版本</label>
+      <span style="color:var(--text-dim);font-size:13px">v${__APP_VERSION__} · ${buildTime}</span>
+      <button class="btn" id="set-update" style="padding:7px 14px;font-size:13px">检查更新</button></div>
     <div class="modal-row"><label>♻️ 重置数据</label>
       <button class="btn" id="set-reset">清空收藏与设置</button></div>
-    <p style="color:var(--text-dim);font-size:12px">设置自动保存。</p>`;
+    <p style="color:var(--text-dim);font-size:12px">设置自动保存。新版本发布后，页面会弹出「立即更新」。</p>`;
   const modal = openModal('设置', body);
 
   const volume = modal.el.querySelector<HTMLInputElement>('#set-volume')!;
@@ -100,8 +107,10 @@ function openSettings(onQualityChange: (q: 'high' | 'low') => void): void {
   quality.addEventListener('change', () => {
     const q = quality.value as 'high' | 'low';
     saveSettings({ ...loadSettings(), quality: q });
-    onQualityChange(q);
+    opts.onQualityChange(q);
   });
+
+  modal.el.querySelector('#set-update')?.addEventListener('click', () => opts.onCheckUpdate());
 
   modal.el.querySelector('#set-reset')?.addEventListener('click', () => {
     resetAll();
@@ -141,6 +150,8 @@ export interface SideButtonsOptions {
   onQualityChange: (q: 'high' | 'low') => void;
   /** 战术本点选后开球 */
   onSelectPlay: (playId: string) => void;
+  /** 设置里点「检查更新」 */
+  onCheckUpdate: () => void;
 }
 
 /** 绑定左右功能按钮 */
@@ -154,5 +165,5 @@ export function bindSideButtons(opts: SideButtonsOptions): void {
   bind('btn-cards', openCards);
   bind('btn-playbook', () => openPlaybook(opts.onSelectPlay));
   bind('btn-shop', openShop);
-  bind('btn-settings', () => openSettings(opts.onQualityChange));
+  bind('btn-settings', () => openSettings(opts));
 }

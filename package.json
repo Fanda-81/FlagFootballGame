@@ -1,21 +1,26 @@
 {
   "name": "flag-football-pass",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "腰旗橄榄球传球训练 MVP — Madden 风格战术 + 纵向 3D 球场",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && npm run build",
     "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
     "jsdom": "^29.1.1",
     "typescript": "^7.0.2",

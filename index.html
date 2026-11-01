@@ -7,21 +7,23 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#0b3d1f" />
-    <title>Flag Football Pass — 腰旗橄榄球传球训练</title>
+    <meta
+      name="description"
+      content="腰旗橄榄球传球训练：Madden 风格战术卡片 + 3D 球场，轻点高球、长按平快球，手机电脑都能玩。"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FF Pass" />
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <title>Flag Football Pass — 腰旗橄榄球传球训练</title>
   </head>
   <body>
     <div id="app">
-      <!-- 竖屏提示层 -->
-      <div id="rotate-hint" class="hidden">
-        <div class="rotate-hint-card">
-          <span class="rotate-icon">📱↻</span>
-          <p>请旋转至<b>横屏</b>体验</p>
-        </div>
-      </div>
-
       <!-- 顶部 HUD -->
       <header id="hud">
+        <div class="hud-brand">🏈 FF PASS</div>
         <div class="hud-item">
           <span class="hud-label">连击</span>
           <span id="hud-combo" class="hud-value">0</span>
@@ -45,12 +47,18 @@
 
       <!-- 中央 3D 球场 -->
       <main id="stage">
-        <canvas id="game-canvas"></canvas>
+        <canvas id="game-canvas" aria-label="3D 球场"></canvas>
         <div id="throw-hint" class="hidden">
           <div class="hint-line">👆 <b>轻点</b> QB = 高球 Lob</div>
           <div class="hint-line">✊ <b>长按</b> QB = 平快球 Bullet</div>
         </div>
         <div id="result-banner" class="hidden"></div>
+
+        <!-- 竖屏友好提示：不阻断操作 -->
+        <div id="rotate-hint" class="hidden">
+          <span>📱 横屏体验更佳</span>
+          <button id="rotate-dismiss" aria-label="关闭提示">知道了</button>
+        </div>
       </main>
 
       <!-- 右侧功能按钮 -->
@@ -67,6 +75,25 @@
 
       <!-- 弹窗容器 -->
       <div id="modals"></div>
+
+      <!-- 新版本提示 -->
+      <div id="update-toast" class="hidden">
+        <span class="ut-text">🚀 新版本已就绪</span>
+        <button id="update-now">立即更新</button>
+        <button id="update-later" class="ut-close" aria-label="稍后更新">✕</button>
+      </div>
+
+      <!-- 轻量提示 -->
+      <div id="toast" class="hidden"></div>
+
+      <!-- 启动加载层 -->
+      <div id="boot">
+        <div class="boot-card">
+          <div class="boot-logo">🏈</div>
+          <h1>FLAG BOWL</h1>
+          <p class="boot-sub">正在准备球场…</p>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

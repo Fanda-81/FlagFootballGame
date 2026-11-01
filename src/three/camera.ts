@@ -1,8 +1,13 @@
 import * as THREE from 'three';
+import { FIELD_MID_Z } from './dimensions';
 
 /**
  * Madden 式纵向视角 + 缩放控制。
  * zoom 0..1：0 = 近景低角（QB 身后），1 = 远景高角（俯瞰全场）。
+ *
+ * 相机走廊：z ∈ [-34, -10]、y ∈ [5.5, 21.5]。
+ * 球场外景必须避开这条走廊——看台只允许出现在远端（z > 57）与两侧（|x| > 16），
+ * 近端保持空旷，任何缩放下都不会被挡住。
  */
 export interface CameraRig {
   camera: THREE.PerspectiveCamera;
@@ -10,13 +15,21 @@ export interface CameraRig {
   setZoom(z: number): void;
 }
 
+/** 相机在各缩放档位的位置（供外景避让 / 自动化校验使用） */
+export function cameraPose(zoom: number): THREE.Vector3 {
+  const z = Math.min(1, Math.max(0, zoom));
+  const dist = 14 + z * 21; // 14 ~ 35
+  const height = 6.5 + z * 14.5; // 6.5 ~ 21
+  return new THREE.Vector3(0, height, -dist);
+}
+
 export function createCamera(): CameraRig {
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
-  const lookTarget = new THREE.Vector3(0, 1, 26);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 800);
+  const lookTarget = new THREE.Vector3(0, 1.2, FIELD_MID_Z);
 
   const rig: CameraRig = {
     camera,
-    zoom: 0.32, // 默认：越过看台顶部的俯视
+    zoom: 0.4,
     setZoom(z: number) {
       rig.zoom = Math.min(1, Math.max(0, z));
       apply();
@@ -24,9 +37,7 @@ export function createCamera(): CameraRig {
   };
 
   function apply(): void {
-    const dist = 10 + rig.zoom * 24; // 10 ~ 34
-    const height = 5.5 + rig.zoom * 16; // 5.5 ~ 21.5（越过看台）
-    camera.position.set(0, height, -dist);
+    camera.position.copy(cameraPose(rig.zoom));
     camera.lookAt(lookTarget);
   }
   apply();
