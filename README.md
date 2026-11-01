@@ -22,8 +22,11 @@ Madden 风格的腰旗橄榄球传球训练网页游戏（PWA）：选战术 →
 2. **每次发版**：
 
    ```bash
-   npm run deploy      # 构建 dist/ 并强推 gh-pages 分支
+   git add -A && git commit -m "feat: xxx" && git push   # 源码
+   npm run deploy                                        # 构建 dist/ 并强推 gh-pages
    ```
+
+   `gh-pages` 更新后 30~90 秒生效；用户下次打开会看到「立即更新」。
 
 3. 访问地址：`https://fanda-81.github.io/FlagFootballGame/`
 
