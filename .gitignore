@@ -4,5 +4,10 @@ dev-dist/
 *.local
 .DS_Store
 
-# deploy scratch
+# 部署脚本临时目录
 .deploy-tmp/
+
+# 本地美术源文件（体积大，不入库）
+图片模型/
+*.blend
+*.blend1
