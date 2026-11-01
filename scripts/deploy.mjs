@@ -23,6 +23,9 @@ sh('npm run build');
 if (existsSync(tmp)) rmSync(tmp, { recursive: true, force: true });
 
 console.log('▶ 准备 gh-pages…');
+sh('git worktree prune');
+// 上一轮部署可能留下同名本地分支，orphan 会冲突；这里直接删 ref（不存在也不报错）
+sh('git update-ref -d refs/heads/gh-pages');
 sh(`git worktree add --detach "${tmp}"`);
 try {
   sh('git checkout --orphan gh-pages', tmp);
@@ -39,4 +42,5 @@ try {
 } finally {
   rmSync(tmp, { recursive: true, force: true });
   sh('git worktree prune');
+  sh('git update-ref -d refs/heads/gh-pages');
 }
