@@ -2,6 +2,17 @@ import type { PlayDef, PlayerCard } from '../core/types';
 import { randomWRCard } from '../data/cards';
 import { addCard, loadCards, loadSettings, resetAll, saveSettings } from '../data/storage';
 import { PLAYS } from '../data/plays';
+import { offlineAssets } from '../config';
+import {
+  canPromptInstall,
+  downloadOfflinePack,
+  isInstalledApp,
+  isIOS,
+  isOnline,
+  isStandalone,
+  offlinePackStatus,
+  promptInstall,
+} from '../offline';
 import { openModal } from './modals';
 import { routeSvg } from './playCall';
 
@@ -70,15 +81,35 @@ function openShop(): void {
   openModal('商城', body);
 }
 
-/** 设置弹窗：音量 / 画质 / 版本与更新 / 重置数据 */
+/** 设置弹窗：音量 / 画质 / 网络 / 离线包 / 安装 / 版本 / 重置 */
 function openSettings(opts: {
   onQualityChange: (q: 'high' | 'low') => void;
   onCheckUpdate: () => void;
+  notify: (msg: string) => void;
 }): void {
   const s = loadSettings();
   const buildTime = new Date(__BUILD_TIME__).toLocaleString('zh-CN', { hour12: false });
+  const online = isOnline();
+  const standalone = isStandalone() || isInstalledApp();
+  const canInstall = canPromptInstall();
+  const installHint = standalone
+    ? '已安装'
+    : canInstall
+      ? '可安装'
+      : isIOS()
+        ? 'iOS：Safari 分享 → 添加到主屏幕'
+        : '请用 Chrome / Edge 打开后安装';
+
   const body = document.createElement('div');
   body.innerHTML = `
+    <div class="modal-row"><label>📶 网络</label>
+      <span class="set-value ${online ? '' : 'set-warn'}">${online ? '在线' : '离线（商城等联网功能暂停）'}</span></div>
+    <div class="modal-row"><label>📦 离线包</label>
+      <span class="set-value" id="set-pack">检查中…</span>
+      <button class="btn" id="set-pack-btn" style="padding:7px 14px;font-size:13px">下载</button></div>
+    <div class="modal-row"><label>📲 安装</label>
+      <span class="set-value" id="set-install-state">${installHint}</span>
+      <button class="btn" id="set-install-btn" style="padding:7px 14px;font-size:13px"${standalone ? ' disabled' : ''}>${standalone ? '已安装' : '安装到桌面'}</button></div>
     <div class="modal-row"><label>🔊 音量</label>
       <input type="range" id="set-volume" min="0" max="1" step="0.05" value="${s.volume}">
       <span id="set-volume-val">${Math.round(s.volume * 100)}%</span></div>
@@ -88,16 +119,19 @@ function openSettings(opts: {
         <option value="low"${s.quality === 'low' ? ' selected' : ''}>低（省电）</option>
       </select></div>
     <div class="modal-row"><label>🔄 版本</label>
-      <span style="color:var(--text-dim);font-size:13px">v${__APP_VERSION__} · ${buildTime}</span>
+      <span class="set-value">v${__APP_VERSION__} · ${buildTime}</span>
       <button class="btn" id="set-update" style="padding:7px 14px;font-size:13px">检查更新</button></div>
     <div class="modal-row"><label>♻️ 重置数据</label>
       <button class="btn" id="set-reset">清空收藏与设置</button></div>
-    <p style="color:var(--text-dim);font-size:12px">设置自动保存。新版本发布后，页面会弹出「立即更新」。</p>`;
+    <p style="color:var(--text-dim);font-size:12px">「离线包」会把球场模型缓存到本机；缓存完成后断网也能进游戏，联网功能（商城/检查更新）会提示不可用。</p>`;
   const modal = openModal('设置', body);
 
   const volume = modal.el.querySelector<HTMLInputElement>('#set-volume')!;
   const volumeVal = modal.el.querySelector<HTMLSpanElement>('#set-volume-val')!;
   const quality = modal.el.querySelector<HTMLSelectElement>('#set-quality')!;
+  const packEl = modal.el.querySelector<HTMLSpanElement>('#set-pack')!;
+  const packBtn = modal.el.querySelector<HTMLButtonElement>('#set-pack-btn')!;
+  const installBtn = modal.el.querySelector<HTMLButtonElement>('#set-install-btn')!;
 
   volume.addEventListener('input', () => {
     volumeVal.textContent = `${Math.round(Number(volume.value) * 100)}%`;
@@ -108,6 +142,61 @@ function openSettings(opts: {
     const q = quality.value as 'high' | 'low';
     saveSettings({ ...loadSettings(), quality: q });
     opts.onQualityChange(q);
+  });
+
+  // ---- 离线包 ----
+  const urls = offlineAssets();
+  const refreshPack = async (): Promise<void> => {
+    const st = await offlinePackStatus(urls);
+    if (st.ready) {
+      packEl.textContent = `已缓存 ${st.cached}/${st.total} ✓`;
+      packBtn.textContent = '已缓存';
+      packBtn.disabled = true;
+    } else {
+      packEl.textContent = `未缓存 ${st.cached}/${st.total}`;
+      packBtn.textContent = '下载';
+      packBtn.disabled = !isOnline();
+    }
+  };
+  void refreshPack();
+
+  packBtn.addEventListener('click', () => {
+    void (async () => {
+      if (!isOnline()) {
+        opts.notify('离线状态，联网后再下载离线包');
+        return;
+      }
+      packBtn.disabled = true;
+      packEl.textContent = '下载中…';
+      const ok = await downloadOfflinePack(urls, (done, total) => {
+        packEl.textContent = `下载中 ${done}/${total}`;
+      });
+      if (ok) {
+        packEl.textContent = `已缓存 ${urls.length}/${urls.length} ✓`;
+        packBtn.textContent = '已缓存';
+        opts.notify('离线包已就绪，断网也能玩');
+      } else {
+        packEl.textContent = '部分资源失败';
+        packBtn.textContent = '重试';
+        packBtn.disabled = false;
+        opts.notify('离线包下载不完整，请检查网络后重试');
+      }
+    })();
+  });
+
+  // ---- 安装 ----
+  installBtn.addEventListener('click', () => {
+    void (async () => {
+      if (standalone) return;
+      if (canPromptInstall()) {
+        const accepted = await promptInstall();
+        opts.notify(accepted ? '正在安装…' : '已取消安装');
+        installBtn.textContent = accepted ? '已安装' : '安装到桌面';
+        installBtn.disabled = accepted;
+      } else {
+        opts.notify(isIOS() ? 'Safari：点分享按钮 → 添加到主屏幕' : '浏览器菜单 → 安装应用 / 添加到主屏幕');
+      }
+    })();
   });
 
   modal.el.querySelector('#set-update')?.addEventListener('click', () => opts.onCheckUpdate());
@@ -152,6 +241,8 @@ export interface SideButtonsOptions {
   onSelectPlay: (playId: string) => void;
   /** 设置里点「检查更新」 */
   onCheckUpdate: () => void;
+  /** 轻提示（离线/下载等反馈） */
+  notify: (msg: string) => void;
 }
 
 /** 绑定左右功能按钮 */
@@ -164,6 +255,13 @@ export function bindSideButtons(opts: SideButtonsOptions): void {
   bind('btn-draw', openDraw);
   bind('btn-cards', openCards);
   bind('btn-playbook', () => openPlaybook(opts.onSelectPlay));
-  bind('btn-shop', openShop);
+  bind('btn-shop', () => {
+    // 商城是联网功能：离线时不开放，其余玩法不受影响
+    if (!isOnline()) {
+      opts.notify('商城需要联网，离线时暂不可用');
+      return;
+    }
+    openShop();
+  });
   bind('btn-settings', () => openSettings(opts));
 }

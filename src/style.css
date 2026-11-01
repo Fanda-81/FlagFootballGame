@@ -76,6 +76,35 @@ body {
   opacity: 0.9;
 }
 
+#net-badge {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffd9a8;
+  background: rgba(120, 60, 10, 0.55);
+  border: 1px solid rgba(255, 179, 0, 0.5);
+}
+
+.set-value {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.set-value.set-warn {
+  color: #ffb300;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .hud-item {
   display: flex;
   flex-direction: column;

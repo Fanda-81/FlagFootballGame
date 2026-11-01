@@ -20,6 +20,14 @@ import { bindSideButtons } from './ui/sideButtons';
 import { loadSettings, saveSettings } from './data/storage';
 import { HELMET_MODEL_URL, PLAYER_MODEL_URL } from './config';
 import { initPWA } from './pwa';
+import {
+  isIOS,
+  isOnline,
+  isStandalone,
+  promptInstall,
+  watchConnectivity,
+  watchInstall,
+} from './offline';
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -48,6 +56,9 @@ function main(): void {
   const btnGame = el('btn-game');
   const boot = el('boot');
   const updateToast = el('update-toast');
+  const netBadge = el('net-badge');
+  const installBtn = el<HTMLButtonElement>('btn-install');
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- 场景与渲染 ----
   const { scene, qb, wr, ball } = buildScene();
@@ -327,6 +338,10 @@ function main(): void {
     onQualityChange: (q) => handle.setQuality(q),
     onSelectPlay: (id) => controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined),
     onCheckUpdate: () => {
+      if (!isOnline()) {
+        showToast('离线状态，联网后再检查更新');
+        return;
+      }
       void pwa.checkUpdate().then((hasUpdate) => {
         if (hasUpdate) {
           updateToast.classList.remove('hidden');
@@ -336,14 +351,39 @@ function main(): void {
         }
       });
     },
+    notify: showToast,
   });
 
   // ---- 更新提示 ----
   el('update-now').addEventListener('click', () => pwa.applyUpdate());
   el('update-later').addEventListener('click', () => updateToast.classList.add('hidden'));
 
+  // ---- 离线状态：核心玩法继续，联网功能降级 ----
+  let firstConnectivity = true;
+  watchConnectivity((online) => {
+    netBadge.classList.toggle('hidden', online);
+    if (firstConnectivity) {
+      firstConnectivity = false;
+      return;
+    }
+    showToast(online ? '🌐 已恢复联网' : '📴 离线模式：可继续玩，商城等联网功能暂停');
+  });
+
+  // ---- 安装到桌面（离线包的入口）----
+  watchInstall((canInstall) => {
+    installBtn.classList.toggle('hidden', !(canInstall || isIOS()) || isStandalone());
+  });
+  installBtn.addEventListener('click', () => {
+    void (async () => {
+      if (await promptInstall()) {
+        showToast('已开始安装，完成后可从主屏幕直接进入');
+        return;
+      }
+      showToast(isIOS() ? 'Safari：点分享按钮 → 添加到主屏幕' : '浏览器菜单 → 安装应用 / 添加到主屏幕');
+    })();
+  });
+
   // ---- 轻量 toast ----
-  let toastTimer: ReturnType<typeof setTimeout> | null = null;
   function showToast(text: string): void {
     const toast = el('toast');
     toast.textContent = text;

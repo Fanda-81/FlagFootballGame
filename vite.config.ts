@@ -39,8 +39,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // 代码/图标走预缓存；模型体积大，走运行时缓存，首次访问不阻塞安装
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // 代码/图标/模型都进预缓存：SW 安装完即离线可用（模型 ≤2MB，一次下载）
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,glb}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         // 新 SW 激活后接管页面，保证点「立即更新」后一定能刷新到新版本
         clientsClaim: true,

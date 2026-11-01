@@ -9,3 +9,10 @@ const params = new URLSearchParams(location.search);
 export const PLAYER_MODEL_URL: string | null = params.get('player');
 /** 头盔模型路径 */
 export const HELMET_MODEL_URL: string = params.get('helmet') ?? './models/helmet.glb';
+
+/** 离线包需要缓存的资源（代码/图标由 Service Worker 预缓存，这里只列模型） */
+export function offlineAssets(): string[] {
+  const urls = [HELMET_MODEL_URL];
+  if (PLAYER_MODEL_URL) urls.push(PLAYER_MODEL_URL);
+  return urls;
+}
