@@ -408,6 +408,28 @@ function makeSky(): THREE.Mesh {
   return sky;
 }
 
+/** 草皮凹凸贴图：让球场在灯光下有细微起伏，不再是纯平色块 */
+function makeGrassBump(): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, S, S);
+  const rnd = mulberry32(9911);
+  for (let i = 0; i < 9000; i++) {
+    const v = 90 + Math.floor(rnd() * 90);
+    ctx.fillStyle = `rgb(${v}, ${v}, ${v})`;
+    ctx.fillRect(rnd() * S, rnd() * S, 1.5, 1 + rnd() * 2);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(12, 26);
+  return tex;
+}
+
 /**
  * 构建球场场景：黄昏天空 + 草皮 + 街球外景 + QB/WR + 球。
  * 世界坐标：1 unit = 1 yd；x 横向，z 纵深（0=开球线，正=进攻方向），y 向上。
@@ -452,7 +474,13 @@ export function buildScene(): FieldObjects {
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_TOTAL_LENGTH),
-    new THREE.MeshStandardMaterial({ map: makeFieldTexture(), roughness: 0.95, metalness: 0 }),
+    new THREE.MeshStandardMaterial({
+      map: makeFieldTexture(),
+      bumpMap: makeGrassBump(),
+      bumpScale: 0.05,
+      roughness: 0.95,
+      metalness: 0,
+    }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, FIELD_LENGTH / 2);

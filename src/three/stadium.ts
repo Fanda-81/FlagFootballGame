@@ -502,7 +502,8 @@ export async function loadPlayerModel(
     obj.scale.setScalar(scale);
     const scaled = new THREE.Box3().setFromObject(obj);
     const center = scaled.getCenter(new THREE.Vector3());
-    obj.position.set(-center.x, -scaled.min.y, -center.z);
+    // 脚底再往下 2cm：模拟钉鞋踩进草地，避免「悬浮」
+    obj.position.set(-center.x, -scaled.min.y - 0.02, -center.z);
     const yaw = { z: 0, '-z': Math.PI, x: Math.PI / 2, '-x': -Math.PI / 2 }[facing];
     obj.rotation.y = yaw;
     obj.traverse((n) => {

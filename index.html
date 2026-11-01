@@ -15,8 +15,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="FFSIMU" />
-    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
-    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="./icons/favicon-64.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <title>FFSimu — 腰旗橄榄球传球训练</title>
   </head>
   <body>
@@ -80,6 +80,10 @@
 
       <!-- 底部战术列表 -->
       <footer id="playcall">
+        <div id="play-options">
+          <button id="side-toggle" class="opt-pill">右边路</button>
+          <button id="def-toggle" class="opt-pill">防守 · 人盯人</button>
+        </div>
         <div id="playcall-list"></div>
       </footer>
 
@@ -109,7 +113,7 @@
       <!-- 启动加载层 -->
       <div id="boot">
         <div class="boot-card">
-          <div class="boot-logo">🏈</div>
+          <img class="boot-logo-img" src="./icons/icon-192.png" alt="FFSIMU" />
           <h1>FFSIMU</h1>
           <p class="boot-sub">正在准备球场…</p>
         </div>

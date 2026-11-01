@@ -39,10 +39,20 @@ export class GameController {
     this.qbAttrs = qbCard.attrs as QBAttrs;
   }
 
-  /** 选择战术并开球（PLAY_CALL / RESULT → ROUTE）；比赛模式传 defenders */
-  selectPlay(playId: string, defenders?: Vec2[]): void {
+  /** 选择战术并开球（PLAY_CALL / RESULT → ROUTE）；mirror=-1 时左右镜像路线 */
+  selectPlay(playId: string, defenders?: Vec2[], mirror: 1 | -1 = 1): void {
     if (this.state !== GameState.PLAY_CALL && this.state !== GameState.RESULT) return;
-    this.play = getPlay(playId);
+    const base = getPlay(playId);
+    this.play =
+      mirror === 1
+        ? base
+        : {
+            ...base,
+            route: {
+              ...base.route,
+              points: base.route.points.map((p) => ({ x: -p.x, z: p.z })),
+            },
+          };
     this.director = new PlayDirector({
       play: this.play,
       wrAttrs: this.wrAttrs,

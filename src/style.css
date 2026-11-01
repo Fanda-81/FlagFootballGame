@@ -423,9 +423,42 @@ body {
 }
 
 /* 战术卡片浮层：ACTION MENU 上方 */
+#play-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  gap: 8px;
+  z-index: 11;
+}
+
+.opt-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.opt-pill:active {
+  transform: scale(0.96);
+}
+
+.opt-pill.active {
+  border-color: var(--accent-hot);
+  color: var(--accent-hot);
+}
+
 #playcard-pop {
   position: absolute;
-  bottom: calc(100% - 4px);
+  bottom: calc(100% + 44px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -938,6 +971,14 @@ body {
   font-size: 56px;
   line-height: 1;
   animation: boot-bounce 1.1s ease-in-out infinite;
+}
+
+.boot-logo-img {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  animation: boot-bounce 1.6s ease-in-out infinite;
 }
 
 @keyframes boot-bounce {

@@ -258,13 +258,33 @@ function main(): void {
   // ---- 模式：主页练习（单球员接球） / 模拟比赛（QB+WR+防守） ----
   type Mode = 'practice' | 'game';
   let mode: Mode = 'practice';
+  /** 路线镜像：1 = 屏幕左侧（x>0），-1 = 屏幕右侧 */
+  let routeSide: 1 | -1 = 1;
+  let defenseScheme: 'man' | 'zone' = 'man';
+
+  const sideToggle = el('side-toggle');
+  const defToggle = el('def-toggle');
+
+  function syncOptionLabels(): void {
+    sideToggle.textContent = routeSide === 1 ? '左侧路线' : '右侧路线';
+    defToggle.textContent = defenseScheme === 'man' ? '防守 · 人盯人' : '防守 · 区域';
+  }
+  syncOptionLabels();
+  sideToggle.addEventListener('click', () => {
+    routeSide = routeSide === 1 ? -1 : 1;
+    syncOptionLabels();
+  });
+  defToggle.addEventListener('click', () => {
+    defenseScheme = defenseScheme === 'man' ? 'zone' : 'man';
+    syncOptionLabels();
+  });
 
   function applyMode(): void {
     // 练习模式也保留 QB（传球目标就在他身上），比赛模式额外上防守球员
     btnGame.querySelector('span')!.textContent = mode === 'game' ? '训练' : '比赛';
   }
 
-  /** 比赛模式：防守球员随机站位并上场，返回站位（供判定用） */
+  /** 比赛模式：防守球员按战术站位上场，返回站位（供判定用） */
   function spawnDefenders(): Vec2[] {
     for (const d of defenders) scene.remove(d.group);
     defenders.length = 0;
@@ -273,8 +293,19 @@ function main(): void {
       const rig = makePlayer(0x8f1a1a, 0x7a4b2c);
       applyHelmet(rig);
       applyPlayerModel(rig);
-      const x = Math.round((Math.random() * 22 - 11) * 10) / 10;
-      const z = Math.round((3 + Math.random() * 17) * 10) / 10;
+      let x: number;
+      let z: number;
+      if (defenseScheme === 'man') {
+        // 人盯人：贴着外接手起跑线一侧，前后错位
+        x = routeSide * (4 + i * 1.8) + (Math.random() - 0.5) * 2;
+        z = 2.5 + i * 2.2 + Math.random() * 1.5;
+      } else {
+        // 区域：横向铺开的区域防守
+        x = (i - 1.5) * 5.5 + (Math.random() - 0.5) * 2;
+        z = 8 + (i % 2) * 4 + Math.random() * 2;
+      }
+      x = Math.round(Math.max(-12, Math.min(12, x)) * 10) / 10;
+      z = Math.round(z * 10) / 10;
       rig.group.position.set(x, 0, z);
       rig.group.rotation.y = Math.PI; // 面向 QB
       scene.add(rig.group);
@@ -381,6 +412,20 @@ function main(): void {
     }, 2450);
   }
 
+  /** 限制在围栏内（避免接球后冲出场地） */
+  function clampFence(p: THREE.Vector3): void {
+    p.x = THREE.MathUtils.clamp(p.x, -15.4, 15.4);
+    p.z = THREE.MathUtils.clamp(p.z, -7.5, 58);
+  }
+
+  /** 让跑步动画的步频跟移动速度匹配，减少「滑步/断续」感 */
+  function syncRunSpeed(): void {
+    const a = rigAnims.get(wr);
+    if (!a) return;
+    const key = Object.keys(a.actions).find((n) => n.toLowerCase().includes('run'));
+    if (key) a.actions[key].timeScale = THREE.MathUtils.clamp(wrSpeed / 5.2, 0.9, 1.5);
+  }
+
   /** 角度插值：让转身是连续的，而不是瞬间跳转 */
   function smoothAngle(current: number, target: number, t: number): number {
     let diff = target - current;
@@ -429,11 +474,11 @@ function main(): void {
 
   const playCall = renderActionMenu(playcallList, {
     onSelectPlay: (id) => {
-      controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined);
+      controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined, routeSide);
     },
     onReact: () => {
       const pick = PLAYS[Math.floor(Math.random() * PLAYS.length)];
-      controller.selectPlay(pick.id, mode === 'game' ? spawnDefenders() : undefined);
+      controller.selectPlay(pick.id, mode === 'game' ? spawnDefenders() : undefined, routeSide);
     },
   });
   playCall.setEnabled(true);
@@ -498,6 +543,7 @@ function main(): void {
     if (postCatch.t > 0) {
       postCatch.t -= dt;
       postCatch.pos.addScaledVector(postCatch.dir, wrSpeed * dt);
+      clampFence(postCatch.pos);
       wr.group.position.copy(postCatch.pos);
       wr.group.rotation.y = Math.atan2(postCatch.dir.x, postCatch.dir.z);
       runPhase += dt * 10;
@@ -505,12 +551,16 @@ function main(): void {
       if (postCatch.t <= 0) playClip(wr, 'Idle', { fade: 0.25 });
     } else if (d && state !== GameState.RESULT && state !== GameState.RESOLVE) {
       wr.group.position.set(d.runner.pos.x, 0, d.runner.pos.z);
+      clampFence(wr.group.position);
       if (moving) {
         const targetYaw = Math.atan2(d.runner.vel.x, d.runner.vel.z);
         wr.group.rotation.y = smoothAngle(wr.group.rotation.y, targetYaw, dt * 9);
         runPhase += dt * 10;
         if (!rigAnims.has(wr)) animateRig(wr, runPhase, true);
-        if (!wrCatch) playClip(wr, 'Run', { fade: 0.2 });
+        if (!wrCatch) {
+          playClip(wr, 'Run', { fade: 0.2 });
+          syncRunSpeed();
+        }
       } else {
         idlePhase += dt;
         if (!rigAnims.has(wr)) animateRig(wr, idlePhase * 2, false);
@@ -636,7 +686,7 @@ function main(): void {
   handle.onQualityChange = (q) => saveSettings({ ...loadSettings(), quality: q });
   bindSideButtons({
     onQualityChange: (q) => handle.setQuality(q),
-    onSelectPlay: (id) => controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined),
+    onSelectPlay: (id) => controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined, routeSide),
     onCheckUpdate: () => {
       if (!isOnline()) {
         showToast('离线状态，联网后再检查更新');
