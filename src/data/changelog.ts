@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-11-02',
+    items: [
+      '草地材质升级：接入 CC0 草地 PBR 贴图（颜色 / 法线 / 粗糙度）',
+      '细节层按 2 个不同比例混合，减弱重复感，草纹在近景可见',
+      '新增踩踏痕迹与深浅草色变化，码线/号码保持干净清晰',
+      '法线强度提升，灯光下草皮有起伏高光',
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-11-02',
     items: [

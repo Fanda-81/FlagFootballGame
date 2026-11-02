@@ -98,6 +98,18 @@ function makeFieldTexture(): THREE.CanvasTexture {
   }
   ctx.globalAlpha = 1;
 
+  // ---- 踩踏痕迹：中路和码线附近更秃/更深，像真草被踩过 ----
+  for (let i = 0; i < 1400; i++) {
+    const z = Math.random() * FIELD_LENGTH;
+    const x = (Math.random() - 0.5) * (FIELD_WIDTH * 0.55);
+    ctx.globalAlpha = 0.05 + Math.random() * 0.1;
+    ctx.fillStyle = Math.random() > 0.55 ? '#1d4a1f' : '#4a7a3a';
+    ctx.beginPath();
+    ctx.ellipse(px(x), pz(z), (0.12 + Math.random() * 0.25) * SX, (0.4 + Math.random() * 0.8) * SY, Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   // ---- 两端端区：球队色渐变 + 端区文字 ----
   const endZone = (z0: number, z1: number) => {
     const y0 = pz(z1);
@@ -409,27 +421,6 @@ function makeSky(): THREE.Mesh {
 }
 
 /** 草皮凹凸贴图：让球场在灯光下有细微起伏，不再是纯平色块 */
-function makeGrassBump(): THREE.CanvasTexture {
-  const S = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = S;
-  canvas.height = S;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#808080';
-  ctx.fillRect(0, 0, S, S);
-  const rnd = mulberry32(9911);
-  for (let i = 0; i < 9000; i++) {
-    const v = 90 + Math.floor(rnd() * 90);
-    ctx.fillStyle = `rgb(${v}, ${v}, ${v})`;
-    ctx.fillRect(rnd() * S, rnd() * S, 1.5, 1 + rnd() * 2);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(12, 26);
-  return tex;
-}
-
 /**
  * 构建球场场景：黄昏天空 + 草皮 + 街球外景 + QB/WR + 球。
  * 世界坐标：1 unit = 1 yd；x 横向，z 纵深（0=开球线，正=进攻方向），y 向上。
@@ -472,16 +463,58 @@ export function buildScene(): FieldObjects {
     scene.add(line);
   }
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_TOTAL_LENGTH),
-    new THREE.MeshStandardMaterial({
-      map: makeFieldTexture(),
-      bumpMap: makeGrassBump(),
-      bumpScale: 0.05,
-      roughness: 0.95,
-      metalness: 0,
-    }),
-  );
+  // 草皮 PBR 细节层（Poly Haven CC0 贴图，WebP）
+  const texLoader = new THREE.TextureLoader();
+  const grassDiff = texLoader.load('./textures/grass_diff.webp');
+  grassDiff.colorSpace = THREE.SRGBColorSpace;
+  grassDiff.wrapS = grassDiff.wrapT = THREE.RepeatWrapping;
+  grassDiff.repeat.set(14, 32);
+  grassDiff.anisotropy = 8;
+
+  const grassNor = texLoader.load('./textures/grass_nor.webp');
+  grassNor.wrapS = grassNor.wrapT = THREE.RepeatWrapping;
+  grassNor.repeat.set(14, 32);
+  grassNor.anisotropy = 8;
+
+  const grassRough = texLoader.load('./textures/grass_rough.webp');
+  grassRough.wrapS = grassRough.wrapT = THREE.RepeatWrapping;
+  grassRough.repeat.set(7, 16);
+
+  const fieldMat = new THREE.MeshStandardMaterial({
+    map: makeFieldTexture(),
+    normalMap: grassNor,
+    normalScale: new THREE.Vector2(1.5, 1.5),
+    roughnessMap: grassRough,
+    roughness: 1,
+    metalness: 0,
+  });
+  // 把草地细节（颜色）叠加到球场贴图上；白色码线保持干净
+  fieldMat.onBeforeCompile = (shader) => {
+    shader.uniforms.grassDetail = { value: grassDiff };
+    shader.uniforms.grassRepeat = { value: new THREE.Vector2(14, 32) };
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform sampler2D grassDetail;\nuniform vec2 grassRepeat;',
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        vec3 gDetail = texture2D(grassDetail, vMapUv * grassRepeat).rgb;
+        vec3 gDetail2 = texture2D(grassDetail, vMapUv * grassRepeat * 2.7 + 0.37).rgb;
+        float gv = dot(gDetail, vec3(0.299, 0.587, 0.114));
+        float gv2 = dot(gDetail2, vec3(0.299, 0.587, 0.114));
+        gv = mix(gv, gv2, 0.4);
+        // 只调制亮度，保留球场本身的绿色；白线/号码(高亮度)不参与，保持干净
+        float gLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+        float gMask = 1.0 - smoothstep(0.5, 0.78, gLum);
+        diffuseColor.rgb *= mix(1.0, mix(0.66, 1.34, gv), gMask);
+        // 轻微色相变化：亮处偏黄绿，暗处偏深绿
+        diffuseColor.rgb *= mix(vec3(1.0), vec3(0.94, 1.07, 0.88), (gv - 0.5) * 1.1 * gMask);`,
+      );
+  };
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_TOTAL_LENGTH), fieldMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, FIELD_LENGTH / 2);
   ground.receiveShadow = true;

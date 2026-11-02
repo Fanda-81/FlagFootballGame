@@ -40,7 +40,7 @@ export default defineConfig({
       },
       workbox: {
         // 代码/图标/模型都进预缓存：SW 安装完即离线可用（模型 ≤2MB，一次下载）
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,glb}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,glb,webp}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         // 新 SW 激活后接管页面，保证点「立即更新」后一定能刷新到新版本
