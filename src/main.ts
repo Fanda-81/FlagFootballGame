@@ -197,7 +197,7 @@ function main(): void {
       });
       if (!selectionCone) {
         selectionCone = new THREE.Mesh(
-          new THREE.ConeGeometry(0.17, 0.32, 4),
+          new THREE.ConeGeometry(0.12, 0.22, 4),
           new THREE.MeshStandardMaterial({
             color: 0xffc23a,
             emissive: 0xff8a00,
@@ -207,7 +207,7 @@ function main(): void {
           }),
         );
         selectionCone.rotation.x = Math.PI;
-        selectionCone.position.set(0, 2.62, 0);
+        selectionCone.position.set(0, 2.32, 0);
         selectionCone.castShadow = false;
         rig.group.add(selectionCone);
       }
@@ -320,9 +320,12 @@ function main(): void {
 
   let snapTimer: number | undefined;
   snapBtn.addEventListener('click', () => {
-    // 开球：中锋把球交给 QB，QB 接球后撤观察，4.5s 处停住等传球
-    const a = rigAnims.get(qb);
-    if (!a) return;
+    // 开球：WR 起跑，QB 接球后撤观察，4.5s 处停住等传球
+    if (!controller.snap()) {
+      showToast('先选一个战术，再开球');
+      return;
+    }
+    rigAnims.forEach((a) => (a.mixer.timeScale = 1));
     playClip(qb, 'Pass', { time: 0, timeScale: 1, fade: 0.15 });
     if (handBall) handBall.visible = true;
     window.clearTimeout(snapTimer);
@@ -340,6 +343,9 @@ function main(): void {
   /** 复位：球员回到初始站位并静止（不再一直循环播放待机动画） */
   function resetToStart(): void {
     controller.reset();
+    if (freezeTimer) clearTimeout(freezeTimer);
+    rigAnims.forEach((a) => (a.mixer.timeScale = 1));
+    routePreview.visible = false;
     postCatch.t = 0;
     ballSim.active = false;
     catchTriggered = false;
@@ -399,6 +405,7 @@ function main(): void {
   // ---- 状态机与事件 ----
   let totalComplete = 0;
   let resultTimer: ReturnType<typeof setTimeout> | null = null;
+  let freezeTimer: ReturnType<typeof setTimeout> | null = null;
   const wrSpeed = wrSpeedFor((DEFAULT_WR_CARD.attrs as WRAttrs).SPD);
 
   function updateHud(): void {
@@ -491,15 +498,22 @@ function main(): void {
   /** 限制在围栏内（避免接球后冲出场地） */
   function clampFence(p: THREE.Vector3): void {
     p.x = THREE.MathUtils.clamp(p.x, -15.4, 15.4);
-    p.z = THREE.MathUtils.clamp(p.z, -7.5, 58);
+    p.z = THREE.MathUtils.clamp(p.z, -7.5, 56);
   }
 
-  /** 让跑步动画的步频跟移动速度匹配，减少「滑步/断续」感 */
+  /**
+   * 跑步动画按速度重采样：每个循环前进约 2.6 码，
+   * 由速度反推播放倍率，脚部与地面位移对齐（减少滑步）。
+   */
   function syncRunSpeed(): void {
     const a = rigAnims.get(wr);
     if (!a) return;
     const key = Object.keys(a.actions).find((n) => n.toLowerCase().includes('run'));
-    if (key) a.actions[key].timeScale = THREE.MathUtils.clamp(wrSpeed / 5.2, 0.9, 1.5);
+    if (!key) return;
+    const act = a.actions[key];
+    const dur = act.getClip().duration || 0.73;
+    const STRIDE_LEN = 2.6;
+    act.timeScale = THREE.MathUtils.clamp((wrSpeed / STRIDE_LEN) * dur, 0.8, 2.2);
   }
 
   /** 角度插值：让转身是连续的，而不是瞬间跳转 */
@@ -510,6 +524,38 @@ function main(): void {
     return current + diff * Math.min(1, t);
   }
 
+  // ---- 路线预览（草地上半透明虚线，开球后才消失）----
+  const routePreviewMat = new THREE.LineDashedMaterial({
+    color: 0x9dffb0,
+    dashSize: 0.55,
+    gapSize: 0.3,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+  });
+  const routePreview = new THREE.Line(new THREE.BufferGeometry(), routePreviewMat);
+  routePreview.position.y = 0.05;
+  routePreview.visible = false;
+  scene.add(routePreview);
+
+  /** 选中战术后：画路线 + 让 WR 站在起点（静止） */
+  function updateRoutePreview(): void {
+    const play = controller.play;
+    if (!play || controller.state !== GameState.PLAY_CALL) {
+      routePreview.visible = false;
+      return;
+    }
+    const pts = play.route.points.map((p) => new THREE.Vector3(p.x, 0, p.z));
+    routePreview.geometry.dispose();
+    routePreview.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    routePreview.computeLineDistances();
+    routePreview.visible = true;
+    const p0 = play.route.points[0];
+    wr.group.position.set(p0 ? p0.x : routeSide * 5, 0, p0 ? p0.z : 0);
+    wr.group.rotation.y = 0;
+    playClip(wr, 'Run', { time: 0.08, paused: true, fade: 0.15 });
+  }
+
   const controller = new GameController({
     onStateChange: (state) => {
       const idle = state === GameState.PLAY_CALL || state === GameState.RESULT;
@@ -518,12 +564,17 @@ function main(): void {
       if (state !== GameState.ROUTE) chargeRing.classList.add('hidden');
       if (idle) playCall.closeCards();
     },
+    onSelect: () => {
+      updateRoutePreview();
+    },
     onSnap: (play) => {
       playCall.setSelected(play.id);
       catchTriggered = false;
       wrCatch = false;
       postCatch.t = 0;
       ballSim.active = false;
+      routePreview.visible = false;
+      rigAnims.forEach((a) => (a.mixer.timeScale = 1));
       if (handBall) handBall.visible = true;
       playClip(wr, 'Run', { fade: 0.15 });
     },
@@ -543,6 +594,11 @@ function main(): void {
       if (result.code === 'complete') startPostCatch();
       else startBallBounce(result);
       updateHud();
+      // 传球完成后 2 秒，所有球员动画停止（定格），避免一直跑
+      if (freezeTimer) clearTimeout(freezeTimer);
+      freezeTimer = setTimeout(() => {
+        rigAnims.forEach((a) => (a.mixer.timeScale = 0));
+      }, 2000);
       if (resultTimer) clearTimeout(resultTimer);
       resultTimer = setTimeout(() => controller.nextPlay(), 2600);
     },
@@ -594,6 +650,27 @@ function main(): void {
     onCancel: () => chargeRing.classList.add('hidden'),
   });
 
+  // ---- 锥桶点击：小幅度翻倒 ----
+  const coneMeshes: THREE.Mesh[] = [];
+  scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.userData.cone) coneMeshes.push(m);
+  });
+  const toppling: Array<{ mesh: THREE.Mesh; t: number; dir: number }> = [];
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  canvas.addEventListener('pointerup', (e) => {
+    if (controller.state === GameState.ROUTE) return;
+    const rect = canvas.getBoundingClientRect();
+    ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, cameraRig.camera);
+    const hit = raycaster.intersectObjects(coneMeshes, false)[0];
+    if (!hit) return;
+    const mesh = hit.object as THREE.Mesh;
+    if (toppling.some((t) => t.mesh === mesh)) return;
+    toppling.push({ mesh, t: 0, dir: Math.random() < 0.5 ? 1 : -1 });
+  });
+
   // ---- 渲染循环：状态机驱动 + 画面同步 ----
   let runPhase = 0;
   let idlePhase = 0;
@@ -607,10 +684,20 @@ function main(): void {
 
     controller.update(dt);
     rigAnims.forEach((a) => a.mixer.update(dt));
+    // 锥桶翻倒动画
+    for (let i = toppling.length - 1; i >= 0; i--) {
+      const c = toppling[i];
+      c.t += dt;
+      const k = Math.min(c.t / 0.45, 1);
+      const e = 1 - Math.pow(1 - k, 3);
+      c.mesh.rotation.z = c.dir * (Math.PI / 2) * e;
+      c.mesh.position.y = 0.26 - 0.07 * e;
+      if (k >= 1) toppling.splice(i, 1);
+    }
     // 头顶选中三角锥：缓慢旋转 + 轻微浮动
     if (selectionCone) {
       selectionCone.rotation.y += dt * 2.4;
-      selectionCone.position.y = 2.62 + Math.sin(performance.now() / 700) * 0.06;
+      selectionCone.position.y = 2.32 + Math.sin(performance.now() / 700) * 0.05;
     }
     const d = controller.director;
     const moving = !!d && !d.runner.done;

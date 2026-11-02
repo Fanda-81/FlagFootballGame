@@ -322,14 +322,15 @@ function buildProps(): THREE.Group {
   ];
   for (const [x, z] of spots) {
     const fallen = Math.random() < 0.38;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1, 12), coneMat);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.52, 12), coneMat);
+    cone.userData.cone = true;
     if (fallen) {
       // 倒下：绕 Z 轴放平 + 随机朝向，位置略微散开
       cone.rotation.z = (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2);
       cone.rotation.y = Math.random() * Math.PI * 2;
-      cone.position.set(x + (Math.random() - 0.5) * 1.4, 0.33, z + (Math.random() - 0.5) * 1.4);
+      cone.position.set(x + (Math.random() - 0.5) * 1.4, 0.2, z + (Math.random() - 0.5) * 1.4);
     } else {
-      cone.position.set(x, 0.5, z);
+      cone.position.set(x, 0.26, z);
       cone.rotation.y = Math.random() * Math.PI;
     }
     group.add(cone);

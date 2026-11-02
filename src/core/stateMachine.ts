@@ -6,6 +6,8 @@ import { getPlay } from '../data/plays';
 
 export interface ControllerEvents {
   onStateChange?: (state: GameState) => void;
+  /** 选定战术（只做路线预览，未开球） */
+  onSelect?: (play: PlayDef) => void;
   /** 开球：已选定战术，WR 起跑 */
   onSnap?: (play: PlayDef) => void;
   /** 一档结算 */
@@ -20,6 +22,8 @@ export class GameController {
   state: GameState = GameState.PLAY_CALL;
   play: PlayDef | null = null;
   director: PlayDirector | null = null;
+  /** 已选定、等开球时的防守站位 */
+  pendingDefenders?: Vec2[];
   attempts = 0;
   combo = 0;
   bestCombo = 0;
@@ -48,7 +52,7 @@ export class GameController {
     this.setState(GameState.PLAY_CALL);
   }
 
-  /** 选择战术并开球（PLAY_CALL / RESULT → ROUTE）；mirror=-1 时左右镜像路线 */
+  /** 选择战术：只画路线预览，等「开球」后才真正跑 */
   selectPlay(playId: string, defenders?: Vec2[], mirror: 1 | -1 = 1): void {
     if (this.state !== GameState.PLAY_CALL && this.state !== GameState.RESULT) return;
     const base = getPlay(playId);
@@ -62,17 +66,29 @@ export class GameController {
               points: base.route.points.map((p) => ({ x: -p.x, z: p.z })),
             },
           };
+    this.pendingDefenders = defenders;
+    this.lastResult = null;
+    this.ballProgress = 0;
+    this.director = null;
+    this.setState(GameState.PLAY_CALL);
+    this.events.onSelect?.(this.play);
+  }
+
+  /** 开球：WR 开始跑路线（PLAY_CALL → SNAP → ROUTE） */
+  snap(): boolean {
+    if (this.state !== GameState.PLAY_CALL || !this.play) return false;
     this.director = new PlayDirector({
       play: this.play,
       wrAttrs: this.wrAttrs,
       qbAttrs: this.qbAttrs,
-      defenders,
+      defenders: this.pendingDefenders,
     });
     this.lastResult = null;
     this.ballProgress = 0;
     this.setState(GameState.SNAP);
     this.events.onSnap?.(this.play);
     this.setState(GameState.ROUTE);
+    return true;
   }
 
   /** 玩家出手（ROUTE → BALL_FLIGHT） */

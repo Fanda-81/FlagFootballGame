@@ -237,7 +237,7 @@ body {
 #throw-hint {
   position: absolute;
   left: 50%;
-  bottom: 122px;
+  bottom: 176px;
   transform: translateX(-50%);
   display: flex;
   gap: 16px;

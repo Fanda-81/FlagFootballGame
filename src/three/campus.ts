@@ -8,10 +8,10 @@ import { makeAdTexture } from './ads';
  * 相机走廊仍然留空：看台/建筑都在 |x| > 18 或 z > 60。
  */
 
-const BOARD_X = HALF_WIDTH + 2.6; // 15.95
+const BOARD_X = HALF_WIDTH + 5.2; // 18.55：离草地更远，球员不会贴到板上
 // 近端不做广告牌：相机在近端后方，会看到板子背面挡住画面
 const BOARD_Z0 = -28;
-const BOARD_Z1 = 58;
+const BOARD_Z1 = 60;
 const BOARD_H = 1.15;
 
 function pushBox(

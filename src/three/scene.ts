@@ -105,10 +105,10 @@ function makeFieldTexture(): THREE.CanvasTexture {
   ctx.globalAlpha = 1;
 
   // ---- 踩踏痕迹：中路和码线附近更秃/更深，像真草被踩过 ----
-  for (let i = 0; i < 1400; i++) {
+  for (let i = 0; i < 450; i++) {
     const z = Math.random() * FIELD_LENGTH;
     const x = (Math.random() - 0.5) * (FIELD_WIDTH * 0.55);
-    ctx.globalAlpha = 0.05 + Math.random() * 0.1;
+    ctx.globalAlpha = 0.04 + Math.random() * 0.07;
     ctx.fillStyle = Math.random() > 0.55 ? '#1d4a1f' : '#4a7a3a';
     ctx.beginPath();
     ctx.ellipse(px(x), pz(z), (0.12 + Math.random() * 0.25) * SX, (0.4 + Math.random() * 0.8) * SY, Math.random() * 3, 0, Math.PI * 2);
@@ -623,7 +623,7 @@ export function buildScene(initialTheme: Theme = 'street'): FieldObjects {
   const sun = new THREE.DirectionalLight(0xffb07a, 4.0);
   sun.position.copy(SUN_DIR).multiplyScalar(140);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -55;
   sun.shadow.camera.right = 55;
   sun.shadow.camera.top = 80;
@@ -687,7 +687,7 @@ export function buildScene(initialTheme: Theme = 'street'): FieldObjects {
   const daySun = new THREE.DirectionalLight(0xfff4e2, 3.2);
   daySun.position.set(52, 88, 34);
   daySun.castShadow = true;
-  daySun.shadow.mapSize.set(2048, 2048);
+  daySun.shadow.mapSize.set(1024, 1024);
   daySun.shadow.camera.left = -60;
   daySun.shadow.camera.right = 60;
   daySun.shadow.camera.top = 90;
