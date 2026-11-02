@@ -13,6 +13,7 @@ describe('play 全链路集成（不 mock 中间层）', () => {
     expect(c.state).toBe(GameState.PLAY_CALL);
 
     c.selectPlay('slant');
+    c.snap();
     expect(c.state).toBe(GameState.ROUTE);
 
     // WR 起跑 0.7s 后出手（已进入斜插段，推荐 bullet）
@@ -34,6 +35,7 @@ describe('play 全链路集成（不 mock 中间层）', () => {
   it('错误球型：Out 拐点前用 lob → 传大 → 连击清零', () => {
     const c = new GameController();
     c.selectPlay('out');
+    c.snap();
     c.update(0.9);
     c.throwBall('lob');
     c.update(0.6);
@@ -46,6 +48,7 @@ describe('play 全链路集成（不 mock 中间层）', () => {
   it('超时：WR 跑完且超过宽限窗口未出手 → 自动 tooLate 结算', () => {
     const c = new GameController();
     c.selectPlay('hitch');
+    c.snap();
     // hitch 全程约 0.74s，宽限 0.7s；推进 1.6s 必然超时
     c.update(1.6);
     expect(c.state).toBe(GameState.RESULT);
@@ -56,6 +59,7 @@ describe('play 全链路集成（不 mock 中间层）', () => {
   it('连击累计：连续两次完成 combo=2', () => {
     const c = new GameController();
     c.selectPlay('hitch');
+    c.snap();
     c.update(0.5); // WR 已急停
     c.throwBall('bullet');
     c.update(0.3);
@@ -63,6 +67,7 @@ describe('play 全链路集成（不 mock 中间层）', () => {
 
     c.nextPlay();
     c.selectPlay('hitch');
+    c.snap();
     c.update(0.5);
     c.throwBall('bullet');
     c.update(0.3);
@@ -79,6 +84,7 @@ describe('play 全链路集成（不 mock 中间层）', () => {
     expect(c.lastResult).toBeNull();
 
     c.selectPlay('go');
+    c.snap();
     c.selectPlay('slant'); // ROUTE 下不可重选
     expect(c.play?.id).toBe('go');
   });
