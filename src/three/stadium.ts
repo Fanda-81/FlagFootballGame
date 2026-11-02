@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FIELD_LENGTH, HALF_WIDTH } from './dimensions';
+import { makeAdTexture } from './ads';
 
 /**
  * 街球风外景：铁丝网围栏 + 远端涂鸦墙 + 城市天际线 + 灯杆 + 路障。
@@ -57,8 +58,9 @@ function buildFence(): THREE.Group {
   // 两侧围栏（沿 z）
   for (const side of [-1, 1]) {
     const x = side * (HALF_WIDTH + 3.6);
-    const len = 74;
-    const zc = 22;
+    // 围栏一直延伸到相机后方（最大 zoom out 时也看不到断口）
+    const len = 104;
+    const zc = 15;
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(len, H), fenceMat.clone());
     const mat = plane.material as THREE.MeshStandardMaterial;
     if (mat.map) {
@@ -398,12 +400,37 @@ function buildMountains(): THREE.Group {
   return group;
 }
 
+/** 街球场围栏上的广告海报（≤5 张，随机位置） */
+function buildStreetAds(): THREE.Group {
+  const group = new THREE.Group();
+  const COUNT = 5;
+  for (let i = 0; i < COUNT; i++) {
+    const side = i % 2 === 0 ? 1 : -1;
+    const z = -6 + Math.random() * 56;
+    const tex = makeAdTexture(i % 3);
+    const poster = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.2, 2.1),
+      new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.8,
+        emissive: 0x120b0f,
+        emissiveIntensity: 0.35,
+      }),
+    );
+    poster.position.set(side * (HALF_WIDTH + 3.48), 2.0, z);
+    poster.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+    group.add(poster);
+  }
+  return group;
+}
+
 /** 街球场外景总装 */
 export function buildStadium(): THREE.Group {
   const group = new THREE.Group();
   group.name = 'street-stadium';
   group.add(buildMountains());
   group.add(buildFence());
+  group.add(buildStreetAds());
   group.add(buildCity());
   group.add(buildWall());
   group.add(buildLightPoles());

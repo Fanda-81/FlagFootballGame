@@ -7,6 +7,7 @@ import {
   HALF_WIDTH,
 } from './dimensions';
 import { buildStadium } from './stadium';
+import { buildCampusScene } from './campus';
 
 export { FIELD_LENGTH, FIELD_WIDTH, ENDZONE_DEPTH, FIELD_TOTAL_LENGTH } from './dimensions';
 
@@ -32,8 +33,11 @@ export interface FieldObjects {
   qb: PlayerRig;
   wr: PlayerRig;
   ball: THREE.Object3D;
-  /** 程序化开放式看台（不做遮挡，可整体调显隐） */
+  /** 默认外景（街头黄昏） */
   stadium: THREE.Group;
+  /** 切换外景：street = 街头黄昏 / campus = 校园白天 */
+  setTheme: (t: Theme) => void;
+  readonly theme: Theme;
 }
 
 /** 确定性随机：保证每次构建的草皮噪点一致 */
@@ -115,8 +119,8 @@ function makeFieldTexture(): THREE.CanvasTexture {
     const y0 = pz(z1);
     const y1 = pz(z0);
     const g = ctx.createLinearGradient(0, y0, 0, y1);
-    g.addColorStop(0, '#0b2648');
-    g.addColorStop(1, '#123f70');
+    g.addColorStop(0, '#17406f');
+    g.addColorStop(1, '#1f4f86');
     ctx.fillStyle = g;
     ctx.fillRect(0, y0, W, y1 - y0);
     // 端区描边
@@ -420,17 +424,70 @@ function makeSky(): THREE.Mesh {
   return sky;
 }
 
-/** 草皮凹凸贴图：让球场在灯光下有细微起伏，不再是纯平色块 */
+/** 白天天空：湛蓝 → 地平线泛白 + 高太阳 */
+function makeDaySky(): THREE.Mesh {
+  const sunDir = new THREE.Vector3(0.45, 0.72, 0.3).normalize();
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      topColor: { value: new THREE.Color(0x1f5fbf) },
+      midColor: { value: new THREE.Color(0x5a9de0) },
+      horizonColor: { value: new THREE.Color(0xbcdcff) },
+      groundColor: { value: new THREE.Color(0x8a9a7a) },
+      sunDir: { value: sunDir },
+      sunColor: { value: new THREE.Color(0xfff6d8) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 topColor, midColor, horizonColor, groundColor, sunColor;
+      uniform vec3 sunDir;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 col;
+        if (h >= 0.0) {
+          col = mix(horizonColor, midColor, smoothstep(0.0, 0.35, h));
+          col = mix(col, topColor, smoothstep(0.3, 0.9, h));
+        } else {
+          col = mix(horizonColor, groundColor, smoothstep(0.0, -0.12, -h));
+        }
+        float s = max(dot(d, normalize(sunDir)), 0.0);
+        col += sunColor * pow(s, 60.0) * 0.35;
+        col += sunColor * smoothstep(0.9994, 0.9998, s) * 1.2;
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(420, 40, 24), mat);
+  sky.position.set(0, 0, FIELD_LENGTH / 2);
+  sky.renderOrder = -1;
+  return sky;
+}
+
+export type Theme = 'street' | 'campus';
+
 /**
- * 构建球场场景：黄昏天空 + 草皮 + 街球外景 + QB/WR + 球。
+ * 构建球场场景：草皮 + 两套外景（街头黄昏 / 校园白天），可运行时切换。
  * 世界坐标：1 unit = 1 yd；x 横向，z 纵深（0=开球线，正=进攻方向），y 向上。
  */
-export function buildScene(): FieldObjects {
+export function buildScene(initialTheme: Theme = 'street'): FieldObjects {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x2a1430);
   scene.fog = new THREE.Fog(0x8a4a5a, 150, 360);
 
-  scene.add(makeSky());
+  const streetEnv = new THREE.Group();
+  const campusEnv = new THREE.Group();
+  streetEnv.add(makeSky());
 
   // 场地外围：深色柏油 + 混凝土缓冲区，街球场的质感
   const outer = new THREE.Mesh(
@@ -439,7 +496,7 @@ export function buildScene(): FieldObjects {
   );
   outer.rotation.x = -Math.PI / 2;
   outer.position.set(0, -0.08, FIELD_LENGTH / 2);
-  scene.add(outer);
+  streetEnv.add(outer);
 
   const apron = new THREE.Mesh(
     new THREE.PlaneGeometry(FIELD_WIDTH + 33, FIELD_TOTAL_LENGTH + 33),
@@ -447,7 +504,7 @@ export function buildScene(): FieldObjects {
   );
   apron.rotation.x = -Math.PI / 2;
   apron.position.set(0, -0.04, FIELD_LENGTH / 2);
-  scene.add(apron);
+  streetEnv.add(apron);
 
   // 场边黄线（街球场常见的团队区标线）
   const paint = new THREE.MeshStandardMaterial({
@@ -460,7 +517,7 @@ export function buildScene(): FieldObjects {
     const line = new THREE.Mesh(new THREE.PlaneGeometry(0.22, FIELD_TOTAL_LENGTH + 8), paint);
     line.rotation.x = -Math.PI / 2;
     line.position.set(side * (FIELD_WIDTH / 2 + 2.4), 0.005, FIELD_LENGTH / 2);
-    scene.add(line);
+    streetEnv.add(line);
   }
 
   // 草皮 PBR 细节层（Poly Haven CC0 贴图，WebP）
@@ -521,8 +578,8 @@ export function buildScene(): FieldObjects {
   scene.add(ground);
 
   // 黄昏光照：低角度暖色太阳 + 品红环境光 + 冷色补光
-  scene.add(new THREE.HemisphereLight(0xffc6a8, 0x3a2c3a, 1.45));
-  scene.add(new THREE.AmbientLight(0x6a4a62, 0.65));
+  streetEnv.add(new THREE.HemisphereLight(0xffc6a8, 0x3a2c3a, 1.45));
+  streetEnv.add(new THREE.AmbientLight(0x6a4a62, 0.65));
   const sun = new THREE.DirectionalLight(0xffb07a, 4.0);
   sun.position.copy(SUN_DIR).multiplyScalar(140);
   sun.castShadow = true;
@@ -533,20 +590,20 @@ export function buildScene(): FieldObjects {
   sun.shadow.camera.bottom = -40;
   sun.shadow.camera.far = 420;
   sun.shadow.bias = -0.0006;
-  scene.add(sun);
+  streetEnv.add(sun);
 
   // 相机侧冷色补光，避免球员正面死黑
   const fill = new THREE.DirectionalLight(0x9a7ad0, 1.4);
   fill.position.set(-30, 24, -50);
-  scene.add(fill);
+  streetEnv.add(fill);
 
   // 近场补光：把 QB 和近端草皮从逆光里提出来
   const nearKey = new THREE.PointLight(0xffb488, 90, 70, 2);
   nearKey.position.set(0, 10, -2);
-  scene.add(nearKey);
+  streetEnv.add(nearKey);
   const midKey = new THREE.PointLight(0xffc49a, 60, 80, 2);
   midKey.position.set(0, 12, 30);
-  scene.add(midKey);
+  streetEnv.add(midKey);
 
   // QB（主场深蓝）位于开球线后 3yd；WR（客场白）位于开球线右侧
   const qb = makePlayer(0x1a3a8f, 0xc68e5f);
@@ -563,8 +620,71 @@ export function buildScene(): FieldObjects {
   scene.add(ball);
 
   // 程序化开放看台：始终位于相机可视范围之外，不遮挡球场
-  const stadium = buildStadium();
-  scene.add(stadium);
+  streetEnv.add(buildStadium());
+  scene.add(streetEnv);
 
-  return { scene, qb, wr, ball, stadium };
+  // ---- 校园白天外景 ----
+  const campusOuter = new THREE.Mesh(
+    new THREE.PlaneGeometry(900, 900),
+    new THREE.MeshStandardMaterial({ color: 0x6f8f5e, roughness: 1 }),
+  );
+  campusOuter.rotation.x = -Math.PI / 2;
+  campusOuter.position.set(0, -0.08, FIELD_LENGTH / 2);
+  campusEnv.add(campusOuter);
+
+  const campusApron = new THREE.Mesh(
+    new THREE.PlaneGeometry(FIELD_WIDTH + 40, FIELD_TOTAL_LENGTH + 40),
+    new THREE.MeshStandardMaterial({ color: 0xb9b3a6, roughness: 0.95 }),
+  );
+  campusApron.rotation.x = -Math.PI / 2;
+  campusApron.position.set(0, -0.04, FIELD_LENGTH / 2);
+  campusEnv.add(campusApron);
+  campusEnv.add(buildCampusScene());
+  campusEnv.add(makeDaySky());
+  campusEnv.add(new THREE.HemisphereLight(0xd8ecff, 0x6a7a5a, 1.75));
+  campusEnv.add(new THREE.AmbientLight(0xffffff, 0.35));
+  const daySun = new THREE.DirectionalLight(0xfff4e2, 3.2);
+  daySun.position.set(52, 88, 34);
+  daySun.castShadow = true;
+  daySun.shadow.mapSize.set(2048, 2048);
+  daySun.shadow.camera.left = -60;
+  daySun.shadow.camera.right = 60;
+  daySun.shadow.camera.top = 90;
+  daySun.shadow.camera.bottom = -40;
+  daySun.shadow.camera.far = 420;
+  daySun.shadow.bias = -0.0006;
+  campusEnv.add(daySun);
+  const dayFill = new THREE.DirectionalLight(0xbcd8ff, 0.65);
+  dayFill.position.set(-40, 34, -30);
+  campusEnv.add(dayFill);
+  campusEnv.visible = false;
+  scene.add(campusEnv);
+
+  // ---- 主题切换 ----
+  let theme: Theme = initialTheme;
+  function setTheme(next: Theme): void {
+    theme = next;
+    streetEnv.visible = next === 'street';
+    campusEnv.visible = next === 'campus';
+    if (next === 'campus') {
+      scene.background = new THREE.Color(0xa8d0f0);
+      scene.fog = new THREE.Fog(0xd6e8f8, 220, 650);
+    } else {
+      scene.background = new THREE.Color(0x2a1430);
+      scene.fog = new THREE.Fog(0x8a4a5a, 150, 360);
+    }
+  }
+  setTheme(initialTheme);
+
+  return {
+    scene,
+    qb,
+    wr,
+    ball,
+    stadium: streetEnv,
+    setTheme,
+    get theme() {
+      return theme;
+    },
+  };
 }

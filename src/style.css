@@ -1332,6 +1332,37 @@ body {
   border-color: #fff;
 }
 
+/* ============ 球场切换 ============ */
+.theme-grid {
+  display: flex;
+  gap: 10px;
+}
+
+.theme-opt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 2px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.theme-opt .th-icon {
+  font-size: 22px;
+}
+
+.theme-opt.selected {
+  border-color: var(--accent-hot);
+  box-shadow: 0 0 14px rgba(255, 179, 0, 0.3);
+}
+
 /* ============ 商城 ============ */
 .shop-grid {
   display: flex;

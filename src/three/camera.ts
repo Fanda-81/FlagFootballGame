@@ -15,7 +15,8 @@ export interface CameraRig {
 }
 
 export const MIN_ZOOM = -0.5;
-export const MAX_ZOOM = 1;
+/** 收窄最大 zoom out，避免露出围栏/广告牌外的空白 */
+export const MAX_ZOOM = 0.62;
 export const MAX_YAW = 0.3;
 
 /** 镜头看的点：QB 身前 4 码的胸口高度（既框住 QB，又能看到前方球场） */

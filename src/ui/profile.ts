@@ -1,4 +1,5 @@
 import { openModal } from './modals';
+import type { Theme } from '../three/scene';
 import {
   AVATAR_CHOICES,
   AVATAR_COLORS,
@@ -35,11 +36,16 @@ function clampName(input: string): string {
   return name || DEFAULT_PROFILE.name;
 }
 
-/** 个人信息栏：改用户名 / 头像 / 头像底色 */
-export function openProfile(onSaved: () => void): void {
+/** 个人信息栏：改用户名 / 头像 / 头像底色 / 球场 */
+export function openProfile(opts: {
+  onSaved: () => void;
+  theme: Theme;
+  onTheme: (t: Theme) => void;
+}): void {
   const p = loadProfile();
   let avatar = p.avatar;
   let color = p.avatarColor;
+  let theme = opts.theme;
 
   const body = document.createElement('div');
   body.innerHTML = `
@@ -63,6 +69,15 @@ export function openProfile(onSaved: () => void): void {
       ${AVATAR_COLORS.map(
         (c) => `<button class="color-opt${c === color ? ' selected' : ''}" data-color="${c}" style="background:${c}" aria-label="颜色 ${c}"></button>`,
       ).join('')}
+    </div>
+    <label class="field-label">球场</label>
+    <div class="theme-grid">
+      <button class="theme-opt${theme === 'street' ? ' selected' : ''}" data-theme="street">
+        <span class="th-icon">🌆</span><span>街头黄昏</span>
+      </button>
+      <button class="theme-opt${theme === 'campus' ? ' selected' : ''}" data-theme="campus">
+        <span class="th-icon">🎓</span><span>校园白天</span>
+      </button>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
       <button class="btn" id="pf-cancel">取消</button>
@@ -94,11 +109,19 @@ export function openProfile(onSaved: () => void): void {
     });
   });
 
+  modal.el.querySelectorAll<HTMLButtonElement>('.theme-opt').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      theme = (btn.dataset.theme as Theme) ?? theme;
+      opts.onTheme(theme);
+      modal.el.querySelectorAll('.theme-opt').forEach((b) => b.classList.toggle('selected', b === btn));
+    });
+  });
+
   modal.el.querySelector('#pf-cancel')?.addEventListener('click', () => modal.close());
   modal.el.querySelector('#pf-save')?.addEventListener('click', () => {
     const next: Profile = { name: clampName(input.value), avatar, avatarColor: color };
     saveProfile(next);
     modal.close();
-    onSaved();
+    opts.onSaved();
   });
 }

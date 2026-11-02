@@ -1,7 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { animateRig, buildScene, makePlayer, type PlayerRig } from './three/scene';
+import { animateRig, buildScene, makePlayer, type PlayerRig, type Theme } from './three/scene';
 import { loadAnimationClips, loadHelmet, loadPlayerModel } from './three/stadium';
 import { attachZoom, createCamera } from './three/camera';
 import { createRenderer } from './three/renderer';
@@ -64,7 +64,19 @@ function main(): void {
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- 场景与渲染 ----
-  const { scene, qb, wr, ball } = buildScene();
+  const themeParam = new URLSearchParams(location.search).get('theme');
+  const savedTheme: Theme =
+    themeParam === 'campus' || themeParam === 'street'
+      ? themeParam
+      : ((localStorage.getItem('ffp.theme.v1') as Theme | null) ?? 'street');
+  const { scene, qb, wr, ball, setTheme } = buildScene(savedTheme);
+  let currentTheme: Theme = savedTheme;
+  /** 切换球场外景（街头黄昏 / 校园白天） */
+  function applyTheme(t: Theme): void {
+    currentTheme = t;
+    setTheme(t);
+    localStorage.setItem('ffp.theme.v1', t);
+  }
   const cameraRig = createCamera();
   let handle: ReturnType<typeof createRenderer> | null = null;
   try {
@@ -680,7 +692,9 @@ function main(): void {
   initAudio(settings.volume);
   renderProfileChip();
   renderWallet();
-  el('profile-chip').addEventListener('click', () => openProfile(() => renderProfileChip()));
+  el('profile-chip').addEventListener('click', () =>
+    openProfile({ onSaved: () => renderProfileChip(), theme: currentTheme, onTheme: applyTheme }),
+  );
 
   handle.setQuality(settings.quality);
   handle.onQualityChange = (q) => saveSettings({ ...loadSettings(), quality: q });
