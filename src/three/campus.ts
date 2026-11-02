@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { FIELD_LENGTH, HALF_WIDTH } from './dimensions';
+import { ENDZONE_DEPTH, FIELD_LENGTH, HALF_WIDTH } from './dimensions';
 import { makeAdTexture } from './ads';
 
 /**
@@ -130,24 +130,7 @@ function buildGrandstand(): THREE.Group {
   const merged = mergeGeometries(concrete, false);
   if (merged) group.add(new THREE.Mesh(merged, seatShade));
 
-  // 人群
-  const crowdGeo = new THREE.BoxGeometry(0.42, 0.72, 0.36);
-  crowdGeo.translate(0, 0.36, 0);
-  const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.9 });
-  const crowd = new THREE.InstancedMesh(crowdGeo, crowdMat, crowdSpots.length);
-  const m = new THREE.Matrix4();
-  const color = new THREE.Color();
-  const palette = [0xd94f4f, 0x3a6ea8, 0xe0b53a, 0x4f9b57, 0xd9823a, 0x8a5cbf, 0x3a9ea0, 0xf0f0f0];
-  crowdSpots.forEach((s, i) => {
-    m.makeRotationY((Math.random() - 0.5) * 0.4);
-    m.setPosition(s.x, s.y, s.z);
-    crowd.setMatrixAt(i, m);
-    color.setHex(palette[Math.floor(Math.random() * palette.length)]);
-    crowd.setColorAt(i, color);
-  });
-  crowd.instanceMatrix.needsUpdate = true;
-  if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-  group.add(crowd);
+  // 观众方块已移除（改为纯看台）
 
   // 远端新闻间/看台顶（带支撑柱）
   const press = new THREE.Mesh(
@@ -246,9 +229,9 @@ function buildCampusBuildings(): THREE.Group {
 function buildTrees(): THREE.Group {
   const group = new THREE.Group();
   const spots: Array<[number, number]> = [];
-  for (let i = 0; i < 26; i++) {
-    const side = i % 2 === 0 ? -1 : 1;
-    spots.push([side * (24 + Math.random() * 26), -2 + Math.random() * 78]);
+  // 树只放在远端高楼前的空地（看台后面），不挡球场视线
+  for (let i = 0; i < 30; i++) {
+    spots.push([-95 + Math.random() * 190, 82 + Math.random() * 16]);
   }
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.3, 2.4, 6);
   trunkGeo.translate(0, 1.2, 0);
@@ -289,41 +272,79 @@ function buildTrees(): THREE.Group {
   return group;
 }
 
-/** 球门 + 角旗 */
+/** 达阵柱 + 角旗（8 根，缩小到与球员比例相称） */
 function buildGoals(): THREE.Group {
   const group = new THREE.Group();
-  const postMat = new THREE.MeshStandardMaterial({ color: 0xf2c53d, metalness: 0.5, roughness: 0.4 });
-  // 只保留远端球门：近端球门会正好挡在相机与 QB 之间
-  for (const z of [FIELD_LENGTH + 4.6]) {
-    const back = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 10, 8), postMat);
-    back.position.set(0, 5, z);
-    group.add(back);
-    for (const side of [-1, 1]) {
-      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 10, 8), postMat);
-      up.position.set(side * 3.4, 5, z);
-      group.add(up);
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1.2, 8), postMat);
-      pad.position.set(side * 3.4, 0.6, z);
-      group.add(pad);
-    }
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 6.8, 8), postMat);
-    bar.rotation.z = Math.PI / 2;
-    bar.position.set(0, 10, z);
-    group.add(bar);
-  }
-  // 角旗
   const pylonMat = new THREE.MeshStandardMaterial({ color: 0xff6a2a, roughness: 0.7 });
-  for (const [x, z] of [
-    [-HALF_WIDTH, 0],
-    [HALF_WIDTH, 0],
-    [-HALF_WIDTH, FIELD_LENGTH],
-    [HALF_WIDTH, FIELD_LENGTH],
-  ]) {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.9, 0.28), pylonMat);
-    p.position.set(x, 0.45, z);
-    group.add(p);
+  // 两个端区各 4 角：端线 + 得分线
+  const zs = [0, FIELD_LENGTH];
+  for (const z of zs) {
+    for (const x of [-HALF_WIDTH, HALF_WIDTH]) {
+      for (const dz of [-ENDZONE_DEPTH, 0]) {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.16), pylonMat);
+        p.position.set(x, 0.28, z + dz);
+        group.add(p);
+      }
+    }
   }
   return group;
+}
+
+/** 对面看台上的大屏幕：绿色荧光数字显示连击/尝试/成功率 */
+function buildScreen(): { mesh: THREE.Group; set: (combo: number, attempts: number, rate: string) => void } {
+  const W = 1024;
+  const H = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+
+  const draw = (combo: number, attempts: number, rate: string): void => {
+    ctx.fillStyle = '#03100a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(0, 255, 136, 0.25)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(8, 8, W - 16, H - 16);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#00ff88';
+    ctx.shadowBlur = 26;
+    ctx.fillStyle = '#7dffc4';
+    ctx.font = 'bold 44px "Courier New", monospace';
+    ctx.fillText('FFSIMU  •  LIVE STATS', W / 2, 52);
+    ctx.font = 'bold 66px "Courier New", monospace';
+    ctx.fillStyle = '#c8ffe4';
+    ctx.fillText(`COMBO ${String(combo).padStart(2, '0')}`, W * 0.22, 158);
+    ctx.fillText(`ATT ${String(attempts).padStart(2, '0')}`, W * 0.52, 158);
+    ctx.fillText(`RATE ${rate}`, W * 0.82, 158);
+    ctx.shadowBlur = 0;
+    tex.needsUpdate = true;
+  };
+  draw(0, 0, '--');
+
+  const group = new THREE.Group();
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(43, 11.8, 0.6),
+    new THREE.MeshStandardMaterial({ color: 0x14181c, roughness: 0.8 }),
+  );
+  frame.position.set(0, 13.4, 79.8);
+  group.add(frame);
+  const screen = new THREE.Mesh(
+    new THREE.PlaneGeometry(41, 10.4),
+    new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
+  );
+  screen.position.set(0, 13.4, 79.45);
+  screen.rotation.y = Math.PI;
+  group.add(screen);
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x3a3f45, roughness: 0.8 });
+  for (const x of [-16, 16]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.8, 7.5, 0.8), legMat);
+    leg.position.set(x, 4.5, 79.8);
+    group.add(leg);
+  }
+  return { mesh: group, set: draw };
 }
 
 /** 校园场外景总装 */
@@ -335,6 +356,9 @@ export function buildCampusScene(): THREE.Group {
   group.add(buildCampusBuildings());
   group.add(buildTrees());
   group.add(buildGoals());
+  const screen = buildScreen();
+  group.add(screen.mesh);
+  group.userData.setScore = screen.set;
   return group;
 }
 

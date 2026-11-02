@@ -37,6 +37,8 @@ export interface FieldObjects {
   stadium: THREE.Group;
   /** 切换外景：street = 街头黄昏 / campus = 校园白天 */
   setTheme: (t: Theme) => void;
+  /** 校园大屏：显示连击/尝试/成功率（仅校园场有效） */
+  setScore?: (combo: number, attempts: number, rate: string) => void;
   readonly theme: Theme;
 }
 
@@ -369,6 +371,44 @@ function makeAsphaltTexture(): THREE.CanvasTexture {
   tex.anisotropy = 8;
   return tex;
 }
+
+/** 磨砂石地面：浅灰底 + 细砂颗粒 + 淡拼缝 */
+function makeStoneTexture(): THREE.CanvasTexture {
+  const S = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#b9b4a9';
+  ctx.fillRect(0, 0, S, S);
+
+  const rnd = mulberry32(7788);
+  for (let i = 0; i < 16000; i++) {
+    const v = 150 + Math.floor(rnd() * 70);
+    ctx.fillStyle = `rgba(${v}, ${v - 3}, ${v - 10}, ${0.18 + rnd() * 0.3})`;
+    ctx.fillRect(rnd() * S, rnd() * S, 1.6, 1.6);
+  }
+  // 大块石板的浅拼缝
+  ctx.strokeStyle = 'rgba(120, 116, 108, 0.35)';
+  ctx.lineWidth = 2;
+  for (let g = 0; g <= S; g += 128) {
+    ctx.beginPath();
+    ctx.moveTo(g, 0);
+    ctx.lineTo(g, S);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, g);
+    ctx.lineTo(S, g);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(8, 12);
+  tex.anisotropy = 8;
+  return tex;
+}
 export const SUN_DIR = new THREE.Vector3(0.3, 0.3, 1).normalize();
 
 /**
@@ -634,12 +674,13 @@ export function buildScene(initialTheme: Theme = 'street'): FieldObjects {
 
   const campusApron = new THREE.Mesh(
     new THREE.PlaneGeometry(FIELD_WIDTH + 40, FIELD_TOTAL_LENGTH + 40),
-    new THREE.MeshStandardMaterial({ color: 0xb9b3a6, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ map: makeStoneTexture(), roughness: 0.92, metalness: 0.02 }),
   );
   campusApron.rotation.x = -Math.PI / 2;
   campusApron.position.set(0, -0.04, FIELD_LENGTH / 2);
   campusEnv.add(campusApron);
-  campusEnv.add(buildCampusScene());
+  const campusGroup = buildCampusScene();
+  campusEnv.add(campusGroup);
   campusEnv.add(makeDaySky());
   campusEnv.add(new THREE.HemisphereLight(0xd8ecff, 0x6a7a5a, 1.75));
   campusEnv.add(new THREE.AmbientLight(0xffffff, 0.35));
@@ -683,6 +724,9 @@ export function buildScene(initialTheme: Theme = 'street'): FieldObjects {
     ball,
     stadium: streetEnv,
     setTheme,
+    setScore: campusGroup.userData.setScore as
+      | ((combo: number, attempts: number, rate: string) => void)
+      | undefined,
     get theme() {
       return theme;
     },

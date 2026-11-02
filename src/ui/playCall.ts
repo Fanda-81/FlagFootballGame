@@ -45,15 +45,14 @@ export interface PlayGroup {
 }
 
 export const PLAY_GROUPS: PlayGroup[] = [
-  { id: 'quick', title: 'QUICK PASS', icon: '⏱️', sub: '快速短传 · 平快球', playIds: ['slant', 'hitch', 'out', 'curl', 'drag'] },
-  { id: 'smart', title: 'SMART PASS', icon: '🎯', sub: '纵深打击 · 高球', playIds: ['go', 'post', 'corner', 'comeback', 'fade'] },
-  { id: 'react', title: 'READ & REACT', icon: '👀', sub: '随机应变', playIds: [] },
+  { id: 'short', title: 'SHORT PASS', icon: '⏱️', sub: '短传', playIds: ['slant', 'hitch', 'out', 'curl', 'drag'] },
+  { id: 'long', title: 'LONG BALL', icon: '🎯', sub: '长传', playIds: ['go', 'post', 'corner', 'comeback', 'fade'] },
 ];
 
 export interface ActionMenuOptions {
   onSelectPlay: (playId: string) => void;
-  /** READ & REACT：随机开球 */
-  onReact: () => void;
+  /** 预留：随机/跑球等模式（当前未启用） */
+  onReact?: () => void;
 }
 
 export interface ActionMenuHandle {
@@ -113,8 +112,7 @@ export function renderActionMenu(container: HTMLElement, opts: ActionMenuOptions
         renderCards(group);
       } else {
         pop.classList.add('hidden');
-
-        opts.onReact();
+        opts.onReact?.();
       }
     });
     menu.appendChild(btn);

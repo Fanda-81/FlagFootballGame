@@ -13,7 +13,7 @@ import { computeThrow } from './gameplay/ballPhysics';
 import { routeLength } from './gameplay/routes';
 import { wrSpeedFor } from './gameplay/routeRunner';
 import { DEFAULT_WR_CARD } from './data/cards';
-import { PLAYS } from './data/plays';
+
 import { attachGesture } from './ui/gestures';
 import { renderActionMenu } from './ui/playCall';
 import { bindSideButtons, openChangelog } from './ui/sideButtons';
@@ -69,7 +69,7 @@ function main(): void {
     themeParam === 'campus' || themeParam === 'street'
       ? themeParam
       : ((localStorage.getItem('ffp.theme.v1') as Theme | null) ?? 'street');
-  const { scene, qb, wr, ball, setTheme } = buildScene(savedTheme);
+  const { scene, qb, wr, ball, setTheme, setScore } = buildScene(savedTheme);
   let currentTheme: Theme = savedTheme;
   /** 切换球场外景（街头黄昏 / 校园白天） */
   function applyTheme(t: Theme): void {
@@ -126,6 +126,7 @@ function main(): void {
   let animClips: THREE.AnimationClip[] = [];
   let handBall: THREE.Mesh | null = null;
   let wrHandBone: THREE.Object3D | null = null;
+  let selectionCone: THREE.Mesh | null = null;
   const tmpVec = new THREE.Vector3();
 
   const clipsReady = loadAnimationClips(ANIMS_URL).then((clips) => {
@@ -186,11 +187,33 @@ function main(): void {
     }
     rigAnims.set(rig, { mixer, actions, current: '' });
     if (rig === qb) {
-      // 四分卫：停在传球动作的第 4 秒（蓄力姿势），出手后才继续
-      playClip(rig, 'Pass', { time: 4.05, paused: true, fade: 0.2 });
+      // 四分卫：静止时停在传球动作 4.5s 的持球站姿
+      playClip(rig, 'Pass', { time: 4.5, paused: true, fade: 0.2 });
       attachHandBall(clone);
+      // 去掉脚下的圆形阴影，改为头顶旋转三角锥（选中提示）
+      rig.group.traverse((n) => {
+        const mesh = n as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry?.type === 'CircleGeometry') mesh.visible = false;
+      });
+      if (!selectionCone) {
+        selectionCone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.17, 0.32, 4),
+          new THREE.MeshStandardMaterial({
+            color: 0xffc23a,
+            emissive: 0xff8a00,
+            emissiveIntensity: 1.4,
+            transparent: true,
+            opacity: 0.92,
+          }),
+        );
+        selectionCone.rotation.x = Math.PI;
+        selectionCone.position.set(0, 2.62, 0);
+        selectionCone.castShadow = false;
+        rig.group.add(selectionCone);
+      }
     } else {
-      playClip(rig, 'Idle');
+      // 外接手：起跑前是「准备起跑」姿态（不再用中锋开球那种叉腿站姿）
+      playClip(rig, 'Run', { time: 0.08, paused: true, fade: 0.2 });
       if (rig === wr) {
         // 接住后把球吸附到外接手右手
         clone.traverse((n) => {
@@ -218,8 +241,8 @@ function main(): void {
       console.warn('[ball] 未找到右手骨骼');
       return;
     }
-    const geo = new THREE.SphereGeometry(0.1, 14, 10);
-    geo.scale(1, 0.78, 1.6);
+    const geo = new THREE.SphereGeometry(0.085, 14, 10);
+    geo.scale(1, 0.78, 1.55);
     const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x7a3f16, roughness: 0.55 }));
     bone.updateWorldMatrix(true, false);
     const s = new THREE.Vector3();
@@ -276,6 +299,8 @@ function main(): void {
 
   const sideToggle = el('side-toggle');
   const defToggle = el('def-toggle');
+  const resetBtn = el('reset-btn');
+  const snapBtn = el('snap-btn');
 
   function syncOptionLabels(): void {
     sideToggle.textContent = routeSide === 1 ? '左侧路线' : '右侧路线';
@@ -285,11 +310,48 @@ function main(): void {
   sideToggle.addEventListener('click', () => {
     routeSide = routeSide === 1 ? -1 : 1;
     syncOptionLabels();
+    if (controller.state === GameState.PLAY_CALL || controller.state === GameState.RESULT) resetToStart();
   });
   defToggle.addEventListener('click', () => {
     defenseScheme = defenseScheme === 'man' ? 'zone' : 'man';
     syncOptionLabels();
   });
+  resetBtn.addEventListener('click', () => resetToStart());
+
+  let snapTimer: number | undefined;
+  snapBtn.addEventListener('click', () => {
+    // 开球：中锋把球交给 QB，QB 接球后撤观察，4.5s 处停住等传球
+    const a = rigAnims.get(qb);
+    if (!a) return;
+    playClip(qb, 'Pass', { time: 0, timeScale: 1, fade: 0.15 });
+    if (handBall) handBall.visible = true;
+    window.clearTimeout(snapTimer);
+    snapTimer = window.setTimeout(() => {
+      const qa = rigAnims.get(qb);
+      const key = qa && Object.keys(qa.actions).find((n) => n.toLowerCase().includes('pass'));
+      const act = key && qa!.actions[key];
+      if (act) {
+        act.paused = true;
+        act.time = 4.5;
+      }
+    }, 4200);
+  });
+
+  /** 复位：球员回到初始站位并静止（不再一直循环播放待机动画） */
+  function resetToStart(): void {
+    controller.reset();
+    postCatch.t = 0;
+    ballSim.active = false;
+    catchTriggered = false;
+    wrCatch = false;
+    if (handBall) handBall.visible = true;
+    ball.visible = true;
+    wr.group.position.set(routeSide * 5, 0, 0);
+    wr.group.rotation.y = 0;
+    playClip(wr, 'Run', { time: 0.08, paused: true, fade: 0.15 });
+    playClip(qb, 'Pass', { time: 4.5, paused: true, fade: 0.2 });
+    ball.position.set(0, 1.4, -2.4);
+  }
 
   function applyMode(): void {
     // 练习模式也保留 QB（传球目标就在他身上），比赛模式额外上防守球员
@@ -342,8 +404,10 @@ function main(): void {
   function updateHud(): void {
     hudCombo.textContent = String(controller.combo);
     hudAttempts.textContent = String(controller.attempts);
-    hudRate.textContent =
-      controller.attempts > 0 ? `${Math.round((totalComplete / controller.attempts) * 100)}%` : '—';
+    const rate = controller.attempts > 0 ? `${Math.round((totalComplete / controller.attempts) * 100)}%` : '—';
+    hudRate.textContent = rate;
+    // 校园大屏同步
+    setScore?.(controller.combo, controller.attempts, rate);
   }
 
   // ---- 右下角评论区（抖音风格）----
@@ -488,10 +552,6 @@ function main(): void {
     onSelectPlay: (id) => {
       controller.selectPlay(id, mode === 'game' ? spawnDefenders() : undefined, routeSide);
     },
-    onReact: () => {
-      const pick = PLAYS[Math.floor(Math.random() * PLAYS.length)];
-      controller.selectPlay(pick.id, mode === 'game' ? spawnDefenders() : undefined, routeSide);
-    },
   });
   playCall.setEnabled(true);
   updateHud();
@@ -547,6 +607,11 @@ function main(): void {
 
     controller.update(dt);
     rigAnims.forEach((a) => a.mixer.update(dt));
+    // 头顶选中三角锥：缓慢旋转 + 轻微浮动
+    if (selectionCone) {
+      selectionCone.rotation.y += dt * 2.4;
+      selectionCone.position.y = 2.62 + Math.sin(performance.now() / 700) * 0.06;
+    }
     const d = controller.director;
     const moving = !!d && !d.runner.done;
     const state = controller.state;

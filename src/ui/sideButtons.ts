@@ -162,31 +162,31 @@ function openSettings(opts: {
 
   const body = document.createElement('div');
   body.innerHTML = `
-    <div class="modal-row"><label>📶 网络</label>
+    <div class="modal-row"><label>网络</label>
       <span class="set-value ${online ? '' : 'set-warn'}">${online ? '在线' : '离线（商城等联网功能暂停）'}</span></div>
-    <div class="modal-row"><label>📦 离线包</label>
+    <div class="modal-row"><label>离线包</label>
       <span class="set-value" id="set-pack">检查中…</span>
       <button class="btn" id="set-pack-btn" style="padding:7px 14px;font-size:13px">下载</button></div>
-    <div class="modal-row"><label>📲 安装</label>
+    <div class="modal-row"><label>安装</label>
       <span class="set-value" id="set-install-state">${installHint}</span>
       <button class="btn" id="set-install-btn" style="padding:7px 14px;font-size:13px"${standalone ? ' disabled' : ''}>${standalone ? '已安装' : '安装到桌面'}</button></div>
-    <div class="modal-row"><label>🔊 音量</label>
+    <div class="modal-row"><label>音量</label>
       <input type="range" id="set-volume" min="0" max="1" step="0.05" value="${s.volume}">
       <span id="set-volume-val">${Math.round(s.volume * 100)}%</span></div>
-    <div class="modal-row"><label>🖥️ 画质</label>
+    <div class="modal-row"><label>画质</label>
       <select id="set-quality">
         <option value="high"${s.quality === 'high' ? ' selected' : ''}>高（设备分辨率）</option>
         <option value="low"${s.quality === 'low' ? ' selected' : ''}>低（省电）</option>
       </select></div>
-    <div class="modal-row"><label>🔄 版本</label>
+    <div class="modal-row"><label>版本</label>
       <span class="set-value">v${__APP_VERSION__} · ${buildTime}</span>
       <button class="btn" id="set-update" style="padding:7px 14px;font-size:13px">检查更新</button></div>
-    <div class="modal-row"><label>📝 更新内容</label>
+    <div class="modal-row"><label>更新内容</label>
       <span class="set-value">每次更新都可查看</span>
       <button class="btn" id="set-notes" style="padding:7px 14px;font-size:13px">查看</button></div>
-    <div class="modal-row"><label>👤 制作</label>
+    <div class="modal-row"><label>制作</label>
       <span class="set-value">Fanda</span></div>
-    <div class="modal-row"><label>♻️ 重置数据</label>
+    <div class="modal-row"><label>重置数据</label>
       <button class="btn" id="set-reset">清空收藏与设置</button></div>
     <p style="color:var(--text-dim);font-size:12px">「离线包」会把球场模型缓存到本机；缓存完成后断网也能进游戏，联网功能（商城/检查更新）会提示不可用。</p>`;
   const modal = openModal('设置', body);
